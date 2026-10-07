@@ -1,0 +1,21 @@
+# Node (api/, app/)
+node_modules/
+npm-debug.log*
+
+# Env files (may contain secrets/local overrides)
+.env
+.env.*
+
+# Docker Compose local volumes/overrides
+docker-compose.override.yml
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/

@@ -16,7 +16,8 @@ spec:
     spec:
       containers:
         - name: mysql
-          image: prashansajoshi/quotes-db:latest 
+          image: k8s-three-tier-starter-db:latest
+          imagePullPolicy: Never # image is imported locally, not pulled from a registry
           ports:
             - containerPort: 3306
           envFrom:

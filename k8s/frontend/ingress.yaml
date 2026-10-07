@@ -10,9 +10,9 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: my.quotes.com
-    secretName: my-quotes-cert-tls
-    http:
+  # No 'host' set: matches any Host header, so it works via port-forward
+  # to localhost without needing hosts-file entries or a stable node IP.
+  - http:
       paths:
       - pathType: Prefix
         path: "/"

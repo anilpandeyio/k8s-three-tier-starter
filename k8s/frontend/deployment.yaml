@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: quotes-frontend
-          image: prashansajoshi/quotes-frontend:v2 #budhaujjwal/docker-k8s:frontend-latest #prashansajoshi/quotes-frontend:latest 
+          image: k8s-three-tier-starter-app:latest
+          imagePullPolicy: Never # image is imported locally, not pulled from a registry
           ports:
             - containerPort: 5002
           env:

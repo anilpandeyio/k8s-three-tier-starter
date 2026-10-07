@@ -1,8 +1,8 @@
-# Run the mysql db
-docker run id/name_of_image  # This should start a mysql connection
+# Run the mysql db (container_name from docker-compose.yml is 'quotes-db')
+docker run k8s-three-tier-starter-db:latest  # This should start a mysql connection
 
 # While the connection is open, open a new terminal so we can interact with bash in the container
-docker exec -it containername/id /bin/bash # or /bin/sh
+docker exec -it quotes-db /bin/bash # or /bin/sh
 
 
 # We should now be inside our container
@@ -13,14 +13,14 @@ cd docker-entrypoint-init.d
 
 # CD out of the folder, and acces mysql
 cd ..
-mysql -proot # attach the password, which is root
+mysql -proot # password matches MYSQL_ROOT_PASSWORD in docker-compose.yml, which is 'root'
 
 # Now we are using mysql database, so we can check the databaes, tables etc..
 # Let's show all databases available
 show databases;
 
-# Pick our database
-use quote;
+# Pick our database (name matches MYSQL_DATABASE in docker-compose.yml, which is 'quotesdb')
+use quotesdb;
 
 # Show tables (shows quotes table)  
 show tables;
