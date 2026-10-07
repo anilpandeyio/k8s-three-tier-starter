@@ -25,7 +25,8 @@ kubectl get pods,svc -n ingress-nginx
 kubectl get ingress -n frontend
 
 # Watch pods across all 3 app namespaces until they're Running
-kubectl get pods -n database -n backend -n frontend --watch
+# (blocks until Ctrl+C -- optional, run in a separate terminal if needed)
+# kubectl get pods -n database -n backend -n frontend --watch
 
 # Tail logs if something isn't coming up (swap namespace/label as needed)
 # kubectl logs -n backend -l app=quotes-api --tail=100 -f

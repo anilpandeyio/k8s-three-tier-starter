@@ -17,6 +17,8 @@ A 3-tier Quotes application (MySQL + API + Frontend) that can run locally with D
 
 ## Local Development (Docker Compose)
 
+![alt text](image.png)
+
 Build and run all three services:
 
 ```sh
