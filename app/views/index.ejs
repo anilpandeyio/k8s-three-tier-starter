@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quotes Gallery</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="page-header">
+            <h1>Quotes Gallery</h1>
+            <p>Collect and share the words that inspire you.</p>
+        </header>
+
+        <section class="card">
+            <form class="quote-form" method="POST">
+                <input type="text" name="quote" placeholder="Enter a quote" required>
+                <input type="text" name="author" placeholder="Author">
+                <button type="submit">Add Quote</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <% if (quotes.length === 0) { %>
+                <p class="empty-state">No quotes yet — be the first to add one!</p>
+            <% } else { %>
+                <ul class="quote-list">
+                    <% quotes.forEach(function(quote) { %>
+                        <li class="quote-item">
+                            <p class="quote-text">&ldquo;<%= quote.quote %>&rdquo;</p>
+                            <p class="quote-author">&mdash; <%= quote.author || "Unknown" %></p>
+                        </li>
+                    <% }); %>
+                </ul>
+            <% } %>
+        </section>
+    </div>
+</body>
+</html>
+

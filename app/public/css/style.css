@@ -1,0 +1,124 @@
+:root {
+  --bg-gradient-start: #6a11cb;
+  --bg-gradient-end: #2575fc;
+  --card-bg: #ffffff;
+  --text-dark: #1f2430;
+  --text-muted: #6b7280;
+  --accent: #6a11cb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: linear-gradient(135deg, var(--bg-gradient-start), var(--bg-gradient-end));
+  color: var(--text-dark);
+  padding: 2.5rem 1rem;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.page-header {
+  text-align: center;
+  color: #ffffff;
+  margin-bottom: 2rem;
+}
+
+.page-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 2.25rem;
+}
+
+.page-header p {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: 14px;
+  padding: 1.75rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.card + .card {
+  margin-top: 1.5rem;
+}
+
+.quote-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.quote-form input {
+  flex: 1 1 200px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #d8dbe3;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.quote-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.15);
+}
+
+.quote-form button {
+  padding: 0.65rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.quote-form button:hover {
+  opacity: 0.9;
+}
+
+.quote-list {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.quote-item {
+  padding: 1rem 1.25rem;
+  border-left: 4px solid var(--accent);
+  background: #f8f7fc;
+  border-radius: 8px;
+}
+
+.quote-item .quote-text {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-style: italic;
+}
+
+.quote-item .quote-author {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 1rem 0;
+}
