@@ -7,7 +7,7 @@ A 3-tier Quotes application (MySQL + API + Frontend) that can run locally with D
 - **Frontend (`app`)**: Node.js + Express + EJS, renders quotes and posts new ones via the API. See [app/app.js](app/app.js).
 - **Ingress Controller**: nginx ingress, routes external traffic to the frontend.
 
-> Previously the `api` and `app` services were written in Python/Flask. They have been rewritten in Node.js/Express. The old README is kept at [OLD_README.md](OLD_README.md) for reference.
+> Previously the `api` and `app` services were written in Python/Flask. They have been rewritten in Node.js/Express.
 
 ## Prerequisites
 
