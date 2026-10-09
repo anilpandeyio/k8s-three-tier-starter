@@ -6,9 +6,45 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write # lets the "version" job commit the bumped VERSION file back to main
+
 jobs:
+  version:
+    name: Resolve image tag / bump version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump VERSION file on merges to main
+        if: github.event_name == 'push'
+        id: bump
+        run: |
+          current=$(cat VERSION)
+          IFS='.' read -r major minor patch <<< "$current"
+          new_version="$major.$minor.$((patch + 1))"
+          echo "$new_version" > VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "ci: bump version to v$new_version [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve tag
+        id: resolve
+        # PRs get a traceable commit-sha tag; merges to main get the freshly bumped version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=v${{ steps.bump.outputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
   api:
     name: API - build, test & validate
+    needs: version
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,25 +72,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Determine image tag
-        id: vars
-        # PRs get a traceable commit-sha tag; merges to main get "latest"
-        run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Show resolved push decision
-        run: |
-          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: api
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-api:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-api:${{ needs.version.outputs.tag }}
 
   app:
     name: App - build, test & validate
+    needs: version
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -82,25 +109,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Determine image tag
-        id: vars
-        # PRs get a traceable commit-sha tag; merges to main get "latest"
-        run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Show resolved push decision
-        run: |
-          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: app
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-app:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-app:${{ needs.version.outputs.tag }}
 
   db:
     name: DB - build & validate
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,19 +131,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Determine image tag
-        id: vars
-        # PRs get a traceable commit-sha tag; merges to main get "latest"
-        run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Show resolved push decision
-        run: |
-          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: db
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-db:${{ steps.vars.outputs.tag }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-db:${{ needs.version.outputs.tag }}
+
