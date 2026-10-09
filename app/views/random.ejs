@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Quote</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="page-header">
+            <h1>Random Quote</h1>
+        </header>
+
+        <section class="card">
+            <% if (error) { %>
+                <p class="empty-state"><%= error %></p>
+            <% } else { %>
+                <p class="quote-text">&ldquo;<%= quote.quote %>&rdquo;</p>
+                <p class="quote-author">&mdash; <%= quote.author || "Unknown" %></p>
+            <% } %>
+            <a href="/">Back to all quotes</a>
+        </section>
+    </div>
+</body>
+</html>

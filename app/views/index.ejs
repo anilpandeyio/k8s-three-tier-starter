@@ -30,6 +30,9 @@
                         <li class="quote-item">
                             <p class="quote-text">&ldquo;<%= quote.quote %>&rdquo;</p>
                             <p class="quote-author">&mdash; <%= quote.author || "Unknown" %></p>
+                            <form class="quote-delete-form" method="POST" action="/quotes/<%= quote.id %>/delete">
+                                <button type="submit">Delete</button>
+                            </form>
                         </li>
                     <% }); %>
                 </ul>
