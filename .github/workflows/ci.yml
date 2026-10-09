@@ -31,19 +31,27 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Determine image tag
+        id: vars
+        # PRs get a traceable commit-sha tag; merges to main get "latest"
+        run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Show resolved push decision
+        run: |
+          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: api
-          # only push on merges to main; PRs just validate that the image builds
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-api:latest
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-api:${{ steps.vars.outputs.tag }}
 
   app:
     name: App - build, test & validate
@@ -69,19 +77,27 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Determine image tag
+        id: vars
+        # PRs get a traceable commit-sha tag; merges to main get "latest"
+        run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Show resolved push decision
+        run: |
+          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: app
-          # only push on merges to main; PRs just validate that the image builds
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-app:latest
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-app:${{ steps.vars.outputs.tag }}
 
   db:
     name: DB - build & validate
@@ -92,16 +108,24 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Determine image tag
+        id: vars
+        # PRs get a traceable commit-sha tag; merges to main get "latest"
+        run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Show resolved push decision
+        run: |
+          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: db
-          # only push on merges to main; PRs just validate that the image builds
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-db:latest
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-db:${{ steps.vars.outputs.tag }}
