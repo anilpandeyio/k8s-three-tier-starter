@@ -28,8 +28,22 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Build Docker image
-        run: docker build -t quotes-api:ci .
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: api
+          # only push on merges to main; PRs just validate that the image builds
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-api:latest
 
   app:
     name: App - build, test & validate
@@ -52,5 +66,42 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Build Docker image
-        run: docker build -t quotes-app:ci .
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          # only push on merges to main; PRs just validate that the image builds
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-app:latest
+
+  db:
+    name: DB - build & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: db
+          # only push on merges to main; PRs just validate that the image builds
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-db:latest
