@@ -42,6 +42,12 @@ jobs:
         # PRs get a traceable commit-sha tag; merges to main get "latest"
         run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
+      - name: Show resolved push decision
+        run: |
+          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "will_push=${{ github.event_name == 'push' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -85,6 +91,12 @@ jobs:
         # PRs get a traceable commit-sha tag; merges to main get "latest"
         run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
+      - name: Show resolved push decision
+        run: |
+          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "will_push=${{ github.event_name == 'push' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -112,6 +124,12 @@ jobs:
         id: vars
         # PRs get a traceable commit-sha tag; merges to main get "latest"
         run: echo "tag=${{ github.event_name == 'push' && 'latest' || github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Show resolved push decision
+        run: |
+          echo "event_name=${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "will_push=${{ github.event_name == 'push' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=${{ steps.vars.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build and push image
         uses: docker/build-push-action@v6
