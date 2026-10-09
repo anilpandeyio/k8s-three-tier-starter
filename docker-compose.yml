@@ -4,6 +4,7 @@ version: '3.9'
 services:
   db:
     container_name: quotes-db
+    image: ${DOCKERHUB_USER:-anilpandeyio}/k8s-three-tier-starter-db:latest
     build: ./db
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -15,6 +16,7 @@ services:
 
   api:
     container_name: quotes-api
+    image: ${DOCKERHUB_USER:-anilpandeyio}/k8s-three-tier-starter-api:latest
     build: ./api
     depends_on:
       - db
@@ -28,6 +30,7 @@ services:
 
   app:
     container_name: quotes-frontend
+    image: ${DOCKERHUB_USER:-anilpandeyio}/k8s-three-tier-starter-app:latest
     build: ./app
     depends_on:
       - api

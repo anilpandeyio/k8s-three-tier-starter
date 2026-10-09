@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: quotes-frontend
-          image: k8s-three-tier-starter-app:latest
-          imagePullPolicy: Never # image is imported locally, not pulled from a registry
+          image: docker.io/anilpandeyio/k8s-three-tier-starter-app:latest
+          imagePullPolicy: Always # always pull the latest image from Docker Hub
           ports:
             - containerPort: 5002
           env:

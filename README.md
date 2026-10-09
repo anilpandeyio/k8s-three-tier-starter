@@ -55,27 +55,31 @@ Manifests live in [k8s/](k8s), organized by tier. Two helper scripts cover the w
 | [k8s/frontend/ingress.yaml](k8s/frontend/ingress.yaml) | Ingress rule for `my.quotes.com` → frontend service |
 | [k8s/ingress-nginx/controller.yaml](k8s/ingress-nginx/controller.yaml) | nginx ingress controller (Deployment, RBAC, `IngressClass`, NodePort `Service`) |
 
-This project targets a local **k3s** cluster (e.g. running inside WSL) using images built locally with `docker compose`, not pushed to a registry.
+This project pulls images from **Docker Hub** rather than relying on locally built/imported images, so it works the same on any cluster (k3s, Minikube, EKS, etc.).
 
-### 1. Build images & import them into k3s
-
-k3s runs its own `containerd`, separate from the Docker daemon, so images built with `docker compose build` aren't visible to it automatically — they have to be imported:
+### 1. Build, tag & push images to Docker Hub
 
 ```sh
-docker compose build --no-cache
-docker save k8s-three-tier-starter-api:latest | sudo k3s ctr images import -
-docker save k8s-three-tier-starter-app:latest | sudo k3s ctr images import -
-docker save k8s-three-tier-starter-db:latest  | sudo k3s ctr images import -
+docker login  # use a Docker Hub Personal Access Token, not your password
 
-# Verify the images landed in k3s's image store
-sudo k3s ctr images ls | grep k8s-three-tier-starter
+export DOCKERHUB_USER=anilpandeyio  # your Docker Hub namespace
+
+docker compose build --no-cache
+docker tag k8s-three-tier-starter-api:latest "$DOCKERHUB_USER/k8s-three-tier-starter-api:latest"
+docker tag k8s-three-tier-starter-app:latest "$DOCKERHUB_USER/k8s-three-tier-starter-app:latest"
+docker tag k8s-three-tier-starter-db:latest  "$DOCKERHUB_USER/k8s-three-tier-starter-db:latest"
+
+docker push "$DOCKERHUB_USER/k8s-three-tier-starter-api:latest"
+docker push "$DOCKERHUB_USER/k8s-three-tier-starter-app:latest"
+docker push "$DOCKERHUB_USER/k8s-three-tier-starter-db:latest"
 ```
 
-The manifests reference these exact image names with `imagePullPolicy: Never`, so kubelet never tries to pull from a registry. If you rebuild, re-run the `k3s ctr images import` step and roll out the change:
+The manifests reference `docker.io/<user>/<image>:latest` with `imagePullPolicy: Always`, so kubelet always pulls the latest pushed image. If your repositories are private, create an `imagePullSecret` with your Docker Hub credentials and add it to each `spec.template.spec.imagePullSecrets` in the manifests. After pushing a new image, roll out the change:
 
 ```sh
 kubectl rollout restart deployment/quotes-api-deployment -n backend
 kubectl rollout restart deployment/quotes-frontend-deployment -n frontend
+kubectl rollout restart statefulset/mysql -n database
 ```
 
 ### 2. Deploy to Kubernetes

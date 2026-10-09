@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
         - name: mysql
-          image: k8s-three-tier-starter-db:latest
-          imagePullPolicy: Never # image is imported locally, not pulled from a registry
+          image: docker.io/anilpandeyio/k8s-three-tier-starter-db:latest
+          imagePullPolicy: Always # always pull the latest image from Docker Hub
           ports:
             - containerPort: 3306
           envFrom:
