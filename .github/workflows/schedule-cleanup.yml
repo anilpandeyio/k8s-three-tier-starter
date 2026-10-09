@@ -1,0 +1,49 @@
+name: Clean up old Docker Hub tags
+
+on:
+  schedule:
+    - cron: "0 0 * * 0" # every Sunday at 00:00 UTC
+  workflow_dispatch: {} # allow running it manually from the Actions tab
+
+jobs:
+  cleanup:
+    name: Clean up ${{ matrix.repo }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo:
+          - k8s-three-tier-starter-api
+          - k8s-three-tier-starter-app
+          - k8s-three-tier-starter-db
+    steps:
+      - name: Delete all but "latest" and the 4 most recently pushed tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          REPO: ${{ matrix.repo }}
+        run: |
+          set -euo pipefail
+          KEEP=4
+
+          # Hub API auth is separate from registry login: exchange credentials for a JWT
+          hub_token=$(curl -sf -H "Content-Type: application/json" -X POST \
+            -d "{\"username\": \"${DOCKERHUB_USERNAME}\", \"password\": \"${DOCKERHUB_TOKEN}\"}" \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
+
+          # Newest-first list of every tag currently in the repo
+          all_tags=$(curl -sf -H "Authorization: JWT ${hub_token}" \
+            "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${REPO}/tags/?page_size=100&ordering=-last_updated" \
+            | jq -r '.results[].name')
+
+          keep=$(printf '%s\n' "latest" $(printf '%s\n' "$all_tags" | grep -vx 'latest' | head -n "$KEEP"))
+
+          echo "Keeping:"
+          echo "$keep"
+
+          for tag in $all_tags; do
+            if ! printf '%s\n' "$keep" | grep -qx "$tag"; then
+              echo "Deleting ${REPO}:${tag}"
+              curl -sf -X DELETE -H "Authorization: JWT ${hub_token}" \
+                "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${REPO}/tags/${tag}/"
+            fi
+          done
