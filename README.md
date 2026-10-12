@@ -43,6 +43,8 @@ Useful MySQL debugging commands are in [scripts/db/mysql-shell.sh](scripts/db/my
 
 Manifests live in [k8s/](k8s), organized by tier. Two helper scripts cover the whole flow below — [scripts/k8s/deploy.sh](scripts/k8s/deploy.sh) (build, import, deploy, verify, access) and [scripts/k8s/destroy.sh](scripts/k8s/destroy.sh) (tear down) — the sections underneath explain what they do step by step.
 
+See the [Kubernetes architecture flowchart](architecture-flow.md) for how external requests reach the frontend and how the frontend, API, and database communicate.
+
 | File | Purpose |
 |---|---|
 | [k8s/namespaces.yaml](k8s/namespaces.yaml) | Creates the `database`, `backend`, `frontend`, `ingress-nginx` namespaces |
@@ -52,7 +54,7 @@ Manifests live in [k8s/](k8s), organized by tier. Two helper scripts cover the w
 | [k8s/backend/secret.yaml](k8s/backend/secret.yaml) / [k8s/backend/configmap.yaml](k8s/backend/configmap.yaml) | Copies of the MySQL credentials/config in the `backend` namespace (Secrets/ConfigMaps are namespace-scoped, so the API can't read the `database` namespace's copies) |
 | [k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) | API `Deployment` + `Service` (namespace: `backend`) |
 | [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml) | Frontend `Deployment` + `Service` (namespace: `frontend`) |
-| [k8s/frontend/ingress.yaml](k8s/frontend/ingress.yaml) | Ingress rule for `my.quotes.com` → frontend service |
+| [k8s/frontend/ingress.yaml](k8s/frontend/ingress.yaml) | Host-agnostic Ingress rule routing `/` to the frontend Service |
 | [k8s/ingress-nginx/controller.yaml](k8s/ingress-nginx/controller.yaml) | nginx ingress controller (Deployment, RBAC, `IngressClass`, NodePort `Service`) |
 
 This project pulls images from **Docker Hub** rather than relying on locally built/imported images, so it works the same on any cluster (k3s, Minikube, EKS, etc.).
