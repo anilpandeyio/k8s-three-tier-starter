@@ -380,9 +380,9 @@ volumes:
 
 ### 5.5 Loki — entirely optional
 
-Loki ([k8s/logging/loki-deployment.yaml](k8s/logging/loki-deployment.yaml), [loki-configmap.yaml](k8s/logging/loki-configmap.yaml), [loki-pvc.yaml](k8s/logging/loki-pvc.yaml)) is a log-aggregation database that makes the same data *queryable* (by label, by time range, by text) instead of only `grep`-able in a flat file. It's a single-replica `Deployment` exposed as `loki.logging.svc.cluster.local:3100` ([loki-deployment.yaml:64-82](k8s/logging/loki-deployment.yaml)), storing its data on its own PVC.
+Loki ([k8s/logging/loki/](k8s/logging/loki): [deployment.yaml](k8s/logging/loki/deployment.yaml), [configmap.yaml](k8s/logging/loki/configmap.yaml), [pvc.yaml](k8s/logging/loki/pvc.yaml)) is a log-aggregation database that makes the same data *queryable* (by label, by time range, by text) instead of only `grep`-able in a flat file. It's a single-replica `Deployment` exposed as `loki.logging.svc.cluster.local:3100` ([loki/deployment.yaml:64-82](k8s/logging/loki/deployment.yaml)), storing its data on its own PVC.
 
-**It is not a dependency of anything else in this stack.** The `file` outputs in [§5.3](#53-the-shared-volume-step-by-step) write to the PVC completely independently of whether Loki exists. If Loki isn't deployed, Fluent Bit's `loki` outputs simply can't resolve the `loki.logging.svc.cluster.local` DNS name, log a harmless `getaddrinfo ... Domain name not found` / `no upstream connections available` warning, retry a few times, then drop just those specific chunks — the `file` output pipeline is a completely separate code path inside Fluent Bit and is never affected.
+**It is not a dependency of anything else in this stack**, and it deliberately lives in its own subfolder so it's never applied by accident: `kubectl apply -f k8s/logging` is **not recursive** — it only ever picks up the files directly inside [k8s/logging/](k8s/logging) (Fluent Bit's RBAC/ConfigMap/PVC/DaemonSet), never the `loki/` subfolder. You have to explicitly run `kubectl apply -f k8s/logging/loki` to add Loki. The `file` outputs in [§5.3](#53-the-shared-volume-step-by-step) write to the PVC completely independently of whether Loki exists. If Loki isn't deployed, Fluent Bit's `loki` outputs simply can't resolve the `loki.logging.svc.cluster.local` DNS name, log a harmless `getaddrinfo ... Domain name not found` / `no upstream connections available` warning, retry a few times, then drop just those specific chunks — the `file` output pipeline is a completely separate code path inside Fluent Bit and is never affected.
 
 ---
 
@@ -397,7 +397,7 @@ kubectl apply -f k8s/namespaces.yaml
 ### 6.2 Option A — logging, file-only (no Loki)
 
 ```sh
-kubectl apply -f k8s/logging/rbac.yaml -f k8s/logging/configmap.yaml -f k8s/logging/pvc.yaml -f k8s/logging/daemonset.yaml
+kubectl apply -f k8s/logging
 kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx
 ```
 
@@ -406,10 +406,10 @@ Logs are collected into `aggregated-pods.log` / `aggregated-app.log` on the PVC 
 ### 6.3 Option B — full stack, including Loki
 
 ```sh
-kubectl apply -f k8s/logging -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx
+kubectl apply -f k8s/logging -f k8s/logging/loki -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx
 ```
 
-(`-f k8s/logging` applies *every* file in that directory, Loki included, since `kubectl apply -f <dir>` applies the whole directory.)
+`-f k8s/logging` and `-f k8s/logging/loki` are two separate `-f` flags on purpose — `kubectl apply -f <dir>` only reads the files directly in that directory, not its subfolders, so Loki needs its own explicit `-f`. (Want to remove Loki later without touching anything else? `kubectl delete -f k8s/logging/loki`.)
 
 ### 6.4 Either way, access the app
 
@@ -505,7 +505,7 @@ No. See [§5.5](#55-loki--entirely-optional). Everything in [§2](#2-the-three-a
 Your deployed `quotes-api`/`quotes-frontend` images were built before [api/src/logger.js](api/src/logger.js)/[app/src/logger.js](app/src/logger.js) existed, so the running code never writes to `LOG_DIR`. Rebuild and push the images (`./scripts/docker/build-and-push.sh api app`, or see the main [README.md](README.md)), then `kubectl rollout restart deployment/quotes-api-deployment -n backend` and `.../quotes-frontend-deployment -n frontend`.
 
 **Q: Fluent Bit logs show `no upstream connections available` / `Domain name not found` for `loki`.**
-Expected and harmless if you didn't deploy `k8s/logging/loki-*.yaml` — see [§5.5](#55-loki--entirely-optional). Deploy Loki (`kubectl apply -f k8s/logging`) to make those errors go away.
+Expected and harmless if you didn't deploy `k8s/logging/loki` — see [§5.5](#55-loki--entirely-optional). Deploy Loki (`kubectl apply -f k8s/logging/loki`) to make those errors go away.
 
 **Q: Why does the Fluent Bit output PVC need `ReadWriteOnce` and what's the multi-node caveat?**
 `fluent-bit-output-pvc` ([k8s/logging/pvc.yaml](k8s/logging/pvc.yaml)) is **one shared volume for the whole cluster** (every node's Fluent Bit Pod writes to it), so on a true multi-node cluster only the node that owns the volume can mount it — other nodes' Fluent Bit Pods would fail to start. This starter assumes a single-node cluster (`local-path` StorageClass). The app-log `hostPath` volume in [§5.3](#53-the-shared-volume-step-by-step) has no such problem, because each node only ever reads its *own* local files.
@@ -518,7 +518,7 @@ Kubernetes already sets a container's `$HOSTNAME` environment variable to the Po
 ## 10. Cleanup
 
 ```sh
-kubectl delete -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
+kubectl delete -f k8s/logging/loki -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
 # or, equivalently:
 ./scripts/k8s/destroy.sh
 ```

@@ -5,8 +5,12 @@
 # Namespaces must be applied first since every other manifest targets them
 kubectl apply -f k8s/namespaces.yaml
 
-# Apply all tiers in one command (each -f can be a directory of manifests)
-kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx -f k8s/logging
+# Apply all tiers in one command (each -f can be a directory of manifests).
+# k8s/logging/loki is a separate -f on purpose: `kubectl apply -f <dir>` does
+# NOT recurse into subdirectories, so Fluent Bit (k8s/logging) always
+# deploys without Loki unless k8s/logging/loki is also applied. Drop the
+# "-f k8s/logging/loki" below to run without Loki (see README.md).
+kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx -f k8s/logging -f k8s/logging/loki
 
 # Check rollout status of everything
 kubectl get pods,svc -n database

@@ -60,9 +60,9 @@ See the [Kubernetes architecture flowchart](architecture-flow.md) for how extern
 | [k8s/logging/configmap.yaml](k8s/logging/configmap.yaml) | Fluent Bit config: tails node container log files **and** the app's structured log files, enriches with Kubernetes metadata, writes to a file **and** ships to Loki |
 | [k8s/logging/pvc.yaml](k8s/logging/pvc.yaml) | `PersistentVolumeClaim` backing the aggregated log output files |
 | [k8s/logging/daemonset.yaml](k8s/logging/daemonset.yaml) | Fluent Bit `DaemonSet` (one pod per node, namespace: `logging`) |
-| [k8s/logging/loki-configmap.yaml](k8s/logging/loki-configmap.yaml) | Loki config (filesystem/TSDB storage, single-binary mode) |
-| [k8s/logging/loki-pvc.yaml](k8s/logging/loki-pvc.yaml) | `PersistentVolumeClaim` backing Loki's chunk/index storage |
-| [k8s/logging/loki-deployment.yaml](k8s/logging/loki-deployment.yaml) | Loki `Deployment` (1 replica) + `Service` (`loki.logging.svc.cluster.local:3100`) |
+| [k8s/logging/loki/configmap.yaml](k8s/logging/loki/configmap.yaml) | Loki config (filesystem/TSDB storage, single-binary mode) — in its own subfolder so `kubectl apply -f k8s/logging` never applies it implicitly; see [§5](#5-centralized-log-collection-fluent-bit--loki) |
+| [k8s/logging/loki/pvc.yaml](k8s/logging/loki/pvc.yaml) | `PersistentVolumeClaim` backing Loki's chunk/index storage |
+| [k8s/logging/loki/deployment.yaml](k8s/logging/loki/deployment.yaml) | Loki `Deployment` (1 replica) + `Service` (`loki.logging.svc.cluster.local:3100`) |
 
 This project pulls images from **Docker Hub** rather than relying on locally built/imported images, so it works the same on any cluster (k3s, Minikube, EKS, etc.).
 
@@ -107,7 +107,9 @@ kubectl rollout restart statefulset/mysql -n database
 # Namespaces first — everything else targets them
 kubectl apply -f k8s/namespaces.yaml
 
-# Apply all tiers in one command (each -f can be a directory of manifests)
+# Apply all tiers in one command (each -f can be a directory of manifests).
+# This deploys logging via Fluent Bit (file-based, no Loki); see "5. Centralized
+# log collection" below to also add Loki by applying k8s/logging/loki.
 kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx -f k8s/logging
 ```
 
@@ -151,7 +153,7 @@ No hosts-file edits and no tracking the node IP are needed — the port-forward 
 
 ### 5. Centralized log collection (Fluent Bit + Loki)
 
-> **Is Loki required?** No. Fluent Bit's `file` output writes the aggregated log data straight to the PVC described below independently of Loki — that part works with zero extra setup. Loki is an *additional* sink that makes the same data queryable (LogQL, Grafana, etc.) instead of only `grep`-able in a flat file. If you skip deploying `k8s/logging/loki-*.yaml`, Fluent Bit's `loki` output will just retry/fail quietly in the background (see its logs) while the `file` output keeps working.
+> **Is Loki required?** No. Fluent Bit's `file` output writes the aggregated log data straight to the PVC described below independently of Loki — that part works with zero extra setup. Loki is an *additional* sink that makes the same data queryable (LogQL, Grafana, etc.) instead of only `grep`-able in a flat file. Loki lives in its own subfolder, [k8s/logging/loki/](k8s/logging/loki), specifically so it's never applied by accident: `kubectl apply -f k8s/logging` is **not recursive**, so it only ever deploys Fluent Bit. If you don't apply `k8s/logging/loki`, Fluent Bit's `loki` output will just retry/fail quietly in the background (see its logs) while the `file` output keeps working.
 
 [k8s/logging/](k8s/logging) runs:
 
@@ -159,16 +161,27 @@ No hosts-file edits and no tracking the node IP are needed — the port-forward 
   1. Tails every container's log file on the node from `/var/log/containers/*.log` (where Kubernetes writes/symlinks container stdout/stderr).
   2. **Also tails the Quotes API/frontend's own structured log files** from `/var/log/quotes-app/*.log` — a hostPath volume the apps write to directly (see below) — parsing each line as JSON.
   3. Enriches container-tailed records with Kubernetes metadata (pod, namespace, container, labels) via the `kubernetes` filter (needs the `ClusterRole` in [k8s/logging/rbac.yaml](k8s/logging/rbac.yaml)).
-  4. Writes both streams to files on a PVC (`aggregated-pods.log`, `aggregated-app.log`) **and** ships both to Loki as two labeled streams (`source=kube-containers`, `source=app-file`).
-- **Loki** as a single-replica `Deployment` + `Service` (`loki.logging.svc.cluster.local:3100`), storing chunks/index on its own PVC via the filesystem/TSDB backend — no external object storage needed for this starter-sized setup.
+  4. Writes both streams to files on a PVC (`aggregated-pods.log`, `aggregated-app.log`) **and** ships both to Loki as two labeled streams (`source=kube-containers`, `source=app-file`) — if Loki is deployed.
+- **Loki** ([k8s/logging/loki/](k8s/logging/loki)) as a single-replica `Deployment` + `Service` (`loki.logging.svc.cluster.local:3100`), storing chunks/index on its own PVC via the filesystem/TSDB backend — no external object storage needed for this starter-sized setup.
 
 **Writing application logs to a file over a shared volume:** [api/src/logger.js](api/src/logger.js) and [app/src/logger.js](app/src/logger.js) write every request/error as a JSON line to both stdout (unchanged `kubectl logs` behavior) and, when `LOG_DIR` is set, to `$LOG_DIR/$SERVICE_NAME-$HOSTNAME.log`. [k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) and [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml) set `LOG_DIR=/var/log/quotes-app` and mount a `hostPath` volume at that same path — which sits under the node's `/var/log`, already mounted read-only into the Fluent Bit DaemonSet, so no extra DaemonSet volume was needed. The `$HOSTNAME` (pod name) suffix keeps replicas on the same node from clobbering each other's file.
 
-Deploy everything, including Loki:
+Deploy logging without Loki (file-only — also what step 2 above does):
 
 ```sh
-kubectl apply -f k8s/namespaces.yaml
-kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx -f k8s/logging
+kubectl apply -f k8s/logging
+```
+
+Add Loki on top, whenever you want it (applies independently of the rest of the stack):
+
+```sh
+kubectl apply -f k8s/logging/loki
+```
+
+Remove just Loki, leaving Fluent Bit's file-based logging untouched:
+
+```sh
+kubectl delete -f k8s/logging/loki
 ```
 
 To verify logs are reaching Loki (confirmed working via these exact commands):
@@ -212,7 +225,7 @@ kubectl run pvc-inspector -n logging --image=busybox:1.36 --restart=Never --rm -
 ```sh
 ./scripts/k8s/destroy.sh
 # equivalent to:
-kubectl delete -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
+kubectl delete -f k8s/logging/loki -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
 ```
 
 ## Notes
