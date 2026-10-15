@@ -47,15 +47,22 @@ See the [Kubernetes architecture flowchart](architecture-flow.md) for how extern
 
 | File | Purpose |
 |---|---|
-| [k8s/namespaces.yaml](k8s/namespaces.yaml) | Creates the `database`, `backend`, `frontend`, `ingress-nginx` namespaces |
+| [k8s/namespaces.yaml](k8s/namespaces.yaml) | Creates the `database`, `backend`, `frontend`, `ingress-nginx`, `logging` namespaces |
 | [k8s/database/secret.yaml](k8s/database/secret.yaml) | MySQL credentials (`mysql-secret`), namespace: `database` |
 | [k8s/database/configmap.yaml](k8s/database/configmap.yaml) | MySQL config (`mysql-config`), namespace: `database` |
 | [k8s/database/statefulset.yaml](k8s/database/statefulset.yaml) | MySQL `StatefulSet` + `Service` (namespace: `database`) |
 | [k8s/backend/secret.yaml](k8s/backend/secret.yaml) / [k8s/backend/configmap.yaml](k8s/backend/configmap.yaml) | Copies of the MySQL credentials/config in the `backend` namespace (Secrets/ConfigMaps are namespace-scoped, so the API can't read the `database` namespace's copies) |
-| [k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) | API `Deployment` + `Service` (namespace: `backend`) |
-| [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml) | Frontend `Deployment` + `Service` (namespace: `frontend`) |
+| [k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) | API `Deployment` + `Service` (namespace: `backend`); also mounts the shared `app-logs` hostPath volume (see [Centralized log collection](#5-centralized-log-collection-fluent-bit--loki)) |
+| [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml) | Frontend `Deployment` + `Service` (namespace: `frontend`); also mounts the shared `app-logs` hostPath volume |
 | [k8s/frontend/ingress.yaml](k8s/frontend/ingress.yaml) | Host-agnostic Ingress rule routing `/` to the frontend Service |
 | [k8s/ingress-nginx/controller.yaml](k8s/ingress-nginx/controller.yaml) | nginx ingress controller (Deployment, RBAC, `IngressClass`, NodePort `Service`) |
+| [k8s/logging/rbac.yaml](k8s/logging/rbac.yaml) | `ServiceAccount` + `ClusterRole`/`ClusterRoleBinding` letting Fluent Bit read pod/namespace metadata (namespace: `logging`) |
+| [k8s/logging/configmap.yaml](k8s/logging/configmap.yaml) | Fluent Bit config: tails node container log files **and** the app's structured log files, enriches with Kubernetes metadata, writes to a file **and** ships to Loki |
+| [k8s/logging/pvc.yaml](k8s/logging/pvc.yaml) | `PersistentVolumeClaim` backing the aggregated log output files |
+| [k8s/logging/daemonset.yaml](k8s/logging/daemonset.yaml) | Fluent Bit `DaemonSet` (one pod per node, namespace: `logging`) |
+| [k8s/logging/loki-configmap.yaml](k8s/logging/loki-configmap.yaml) | Loki config (filesystem/TSDB storage, single-binary mode) |
+| [k8s/logging/loki-pvc.yaml](k8s/logging/loki-pvc.yaml) | `PersistentVolumeClaim` backing Loki's chunk/index storage |
+| [k8s/logging/loki-deployment.yaml](k8s/logging/loki-deployment.yaml) | Loki `Deployment` (1 replica) + `Service` (`loki.logging.svc.cluster.local:3100`) |
 
 This project pulls images from **Docker Hub** rather than relying on locally built/imported images, so it works the same on any cluster (k3s, Minikube, EKS, etc.).
 
@@ -76,6 +83,16 @@ docker push "$DOCKERHUB_USER/k8s-three-tier-starter-app:latest"
 docker push "$DOCKERHUB_USER/k8s-three-tier-starter-db:latest"
 ```
 
+Or use the helper script — [scripts/docker/build-and-push.sh](scripts/docker/build-and-push.sh) — which does the same build/tag/push for all three images, but **skips any image whose directory (`db`/`api`/`app`) hasn't changed** since its last successful push (tracked via a content hash in the gitignored `.docker-build-state/` directory), so an unmodified service is never needlessly rebuilt or re-pushed:
+
+```sh
+export DOCKERHUB_USER=anilpandeyio  # optional, defaults to anilpandeyio
+./scripts/docker/build-and-push.sh           # builds/pushes only what changed
+./scripts/docker/build-and-push.sh api       # limit to one (or more) services
+./scripts/docker/build-and-push.sh --force   # ignore the change check, rebuild everything
+./scripts/docker/build-and-push.sh --help    # full usage
+```
+
 The manifests reference `docker.io/<user>/<image>:latest` with `imagePullPolicy: Always`, so kubelet always pulls the latest pushed image. If your repositories are private, create an `imagePullSecret` with your Docker Hub credentials and add it to each `spec.template.spec.imagePullSecrets` in the manifests. After pushing a new image, roll out the change:
 
 ```sh
@@ -91,7 +108,7 @@ kubectl rollout restart statefulset/mysql -n database
 kubectl apply -f k8s/namespaces.yaml
 
 # Apply all tiers in one command (each -f can be a directory of manifests)
-kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx
+kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx -f k8s/logging
 ```
 
 ### 3. Verify Deployment
@@ -101,10 +118,11 @@ kubectl get pods,svc -n database
 kubectl get pods,svc -n backend
 kubectl get pods,svc -n frontend
 kubectl get pods,svc -n ingress-nginx
+kubectl get pods -n logging
 kubectl get ingress -n frontend
 
-# Watch pods across all 3 app namespaces until they're Running
-kubectl get pods -n database -n backend -n frontend --watch
+# Watch pods across all app namespaces until they're Running
+kubectl get pods -n database -n backend -n frontend -n logging --watch
 ```
 
 If a pod is stuck (e.g. `CreateContainerConfigError`, `ImagePullBackOff`), tail its logs:
@@ -131,12 +149,70 @@ curl http://localhost:8081
 
 No hosts-file edits and no tracking the node IP are needed — the port-forward stays valid as long as that command is running.
 
+### 5. Centralized log collection (Fluent Bit + Loki)
+
+> **Is Loki required?** No. Fluent Bit's `file` output writes the aggregated log data straight to the PVC described below independently of Loki — that part works with zero extra setup. Loki is an *additional* sink that makes the same data queryable (LogQL, Grafana, etc.) instead of only `grep`-able in a flat file. If you skip deploying `k8s/logging/loki-*.yaml`, Fluent Bit's `loki` output will just retry/fail quietly in the background (see its logs) while the `file` output keeps working.
+
+[k8s/logging/](k8s/logging) runs:
+
+- **Fluent Bit** as a `DaemonSet` (one pod per node, namespace: `logging`), which:
+  1. Tails every container's log file on the node from `/var/log/containers/*.log` (where Kubernetes writes/symlinks container stdout/stderr).
+  2. **Also tails the Quotes API/frontend's own structured log files** from `/var/log/quotes-app/*.log` — a hostPath volume the apps write to directly (see below) — parsing each line as JSON.
+  3. Enriches container-tailed records with Kubernetes metadata (pod, namespace, container, labels) via the `kubernetes` filter (needs the `ClusterRole` in [k8s/logging/rbac.yaml](k8s/logging/rbac.yaml)).
+  4. Writes both streams to files on a PVC (`aggregated-pods.log`, `aggregated-app.log`) **and** ships both to Loki as two labeled streams (`source=kube-containers`, `source=app-file`).
+- **Loki** as a single-replica `Deployment` + `Service` (`loki.logging.svc.cluster.local:3100`), storing chunks/index on its own PVC via the filesystem/TSDB backend — no external object storage needed for this starter-sized setup.
+
+**Writing application logs to a file over a shared volume:** [api/src/logger.js](api/src/logger.js) and [app/src/logger.js](app/src/logger.js) write every request/error as a JSON line to both stdout (unchanged `kubectl logs` behavior) and, when `LOG_DIR` is set, to `$LOG_DIR/$SERVICE_NAME-$HOSTNAME.log`. [k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) and [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml) set `LOG_DIR=/var/log/quotes-app` and mount a `hostPath` volume at that same path — which sits under the node's `/var/log`, already mounted read-only into the Fluent Bit DaemonSet, so no extra DaemonSet volume was needed. The `$HOSTNAME` (pod name) suffix keeps replicas on the same node from clobbering each other's file.
+
+Deploy everything, including Loki:
+
+```sh
+kubectl apply -f k8s/namespaces.yaml
+kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx -f k8s/logging
+```
+
+To verify logs are reaching Loki (confirmed working via these exact commands):
+
+```sh
+kubectl get pods -n logging -o wide                   # one fluent-bit pod per node + 1 loki pod
+kubectl logs -n logging -l app=fluent-bit --tail=50    # watch for "loki" output errors/successes
+kubectl logs -n logging -l app=loki --tail=50          # Loki's own startup/query logs
+
+# Query Loki's HTTP API directly (LogQL) from inside the cluster
+kubectl run loki-query -n logging --rm -it --restart=Never --image=curlimages/curl:8.11.0 -- sh -c '
+  echo "--- known labels ---";
+  curl -s "http://loki.logging.svc.cluster.local:3100/loki/api/v1/labels";
+  echo;
+  echo "--- app-file logs from the frontend ---";
+  curl -s -G "http://loki.logging.svc.cluster.local:3100/loki/api/v1/query_range" \
+    --data-urlencode "query={source=\"app-file\", service=\"quotes-frontend\"}" \
+    --data-urlencode "limit=5";
+  echo;
+  echo "--- container logs from the backend namespace ---";
+  curl -s -G "http://loki.logging.svc.cluster.local:3100/loki/api/v1/query_range" \
+    --data-urlencode "query={kubernetes_namespace_name=\"backend\"}" \
+    --data-urlencode "limit=5";
+'
+```
+
+A non-empty `result` array (with each stream's `labels` and `values`) confirms logs made it through Fluent Bit into Loki. Useful label keys to filter on: `source` (`kube-containers` or `app-file`), `service` (from the app logger, e.g. `quotes-api`/`quotes-frontend`), `kubernetes_namespace_name`, `kubernetes_pod_name`, `kubernetes_container_name`, and `job=fluent-bit`.
+
+To inspect the raw aggregated files on the PVC instead (works with or without Loki):
+
+```sh
+# The fluent-bit image has no shell, so use a throwaway pod to read the PVC
+kubectl run pvc-inspector -n logging --image=busybox:1.36 --restart=Never --rm -it \
+  --overrides='{"spec":{"containers":[{"name":"pvc-inspector","image":"busybox:1.36","command":["sh","-c","tail -n 50 /output/aggregated-pods.log; echo ---; tail -n 50 /output/aggregated-app.log"],"volumeMounts":[{"name":"out","mountPath":"/output"}]}],"volumes":[{"name":"out","persistentVolumeClaim":{"claimName":"fluent-bit-output-pvc"}}]}}'
+```
+
+> **Single-node vs. multi-node clusters:** the Fluent Bit output PVC and the Loki data PVC both use `ReadWriteOnce`, matching this starter's default `StorageClass` (e.g. Minikube/k3s `local-path`). That's fine for Loki (single replica) and for a single-node cluster. On a multi-node cluster, only the node that owns the Fluent Bit output PVC can mount it, so Fluent Bit pods on other nodes would fail to start — switch to a `ReadWriteMany`-capable `StorageClass` (e.g. NFS, EFS) or a per-node `hostPath` output in that case. The app-log `hostPath` volume has no such constraint: each node's own Fluent Bit pod only ever reads that node's local files.
+
 ### Cleanup
 
 ```sh
 ./scripts/k8s/destroy.sh
 # equivalent to:
-kubectl delete -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
+kubectl delete -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
 ```
 
 ## Notes

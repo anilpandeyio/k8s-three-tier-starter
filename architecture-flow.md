@@ -32,6 +32,13 @@ flowchart LR
             mysqlService["mysql Service<br/>ClusterIP :3306"]
             mysql["MySQL StatefulSet<br/>persistent volume"]
         end
+
+        subgraph loggingNs["Namespace: logging"]
+            fluentBit["Fluent Bit DaemonSet<br/>1 pod per node"]
+            logPvc["fluent-bit-output-pvc<br/>aggregated-pods.log /<br/>aggregated-app.log"]
+            loki["Loki Deployment<br/>:3100"]
+            lokiPvc["loki-data-pvc<br/>chunks/index"]
+        end
     end
 
     user -->|"Recommended local access"| portForward
@@ -50,7 +57,18 @@ flowchart LR
     mysql -. "Query results" .-> api
     api -. "API response" .-> frontend
     frontend -. "Rendered page / response" .-> user
+
+    frontend -.->|"stdout/stderr → node's<br/>/var/log/containers/*.log<br/>+ structured JSON → shared<br/>hostPath /var/log/quotes-app"| fluentBit
+    api -.->|"stdout/stderr → node's<br/>/var/log/containers/*.log<br/>+ structured JSON → shared<br/>hostPath /var/log/quotes-app"| fluentBit
+    mysql -.->|"stdout/stderr<br/>written to node's<br/>/var/log/containers/*.log"| fluentBit
+    fluentBit -->|"Kubernetes-metadata-enriched<br/>JSON records"| logPvc
+    fluentBit -->|"loki output plugin<br/>(2 labeled streams)"| loki
+    loki --> lokiPvc
 ```
+
+## Centralized log collection
+
+A Fluent Bit `DaemonSet` (namespace `logging`) runs one pod per node. Kubernetes already writes every container's stdout/stderr to a per-container file under `/var/log/containers` on that container's node; the DaemonSet mounts that directory read-only and tails those files. The Quotes API/frontend *also* write structured JSON log lines directly to a shared hostPath volume at `/var/log/quotes-app` (see [api/src/logger.js](api/src/logger.js) / [app/src/logger.js](app/src/logger.js)), which Fluent Bit tails as a second input. A `kubernetes` filter enriches the container-tailed records with pod/namespace/label metadata (via a `ClusterRole` granting read access to pods/namespaces). Both streams are written as JSON to files on a `PersistentVolumeClaim` (so the data survives Fluent Bit pod restarts) **and** shipped to a single-replica **Loki** `Deployment`, which stores them on its own PVC and exposes them for LogQL queries. See [k8s/logging/](k8s/logging) and the "Centralized log collection" section of the [README](README.md) for deployment and verification commands.
 
 ## Request flow
 

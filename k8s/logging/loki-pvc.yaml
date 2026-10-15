@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-data-pvc
+  namespace: logging
+  labels:
+    app.kubernetes.io/name: loki
+spec:
+  # ReadWriteOnce is fine here: unlike the Fluent Bit DaemonSet, Loki runs as
+  # a single-replica Deployment, so only one pod ever needs this volume.
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi

@@ -9,6 +9,9 @@ npm-debug.log*
 # Docker Compose local volumes/overrides
 docker-compose.override.yml
 
+# Local state for scripts/docker/build-and-push.sh (per-machine change-detection cache)
+.docker-build-state/
+
 # Logs
 *.log
 

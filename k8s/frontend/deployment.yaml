@@ -22,6 +22,21 @@ spec:
           env:
           - name: API_URL
             value: http://api.backend.svc.cluster.local:5001
+          - name: SERVICE_NAME
+            value: quotes-frontend
+          - name: LOG_DIR
+            value: /var/log/quotes-app
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/quotes-app
+      # Node-local directory shared with the Fluent Bit DaemonSet (which
+      # mounts the node's /var/log read-only) so each pod's structured log
+      # file, written under /var/log/quotes-app, can be tailed from the host.
+      volumes:
+        - name: app-logs
+          hostPath:
+            path: /var/log/quotes-app
+            type: DirectoryOrCreate
 
 ---
 apiVersion: v1

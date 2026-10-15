@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fluent-bit-output-pvc
+  namespace: logging
+  labels:
+    app.kubernetes.io/name: fluent-bit
+spec:
+  # ReadWriteOnce matches how the `database` tier's PVC is provisioned in
+  # this starter (single default StorageClass, e.g. Minikube/k3s hostPath
+  # or local-path). Because a DaemonSet runs one Fluent Bit pod per node,
+  # an RWO volume can only be mounted by the pod on the node that owns it;
+  # on a multi-node cluster, use a ReadWriteMany-capable StorageClass (e.g.
+  # NFS, EFS) or switch to per-node hostPath output so every node's pod can
+  # write successfully.
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi

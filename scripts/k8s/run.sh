@@ -6,13 +6,14 @@
 kubectl apply -f k8s/namespaces.yaml
 
 # Apply all tiers in one command (each -f can be a directory of manifests)
-kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx
+kubectl apply -f k8s/database -f k8s/backend -f k8s/frontend -f k8s/ingress-nginx -f k8s/logging
 
 # Check rollout status of everything
 kubectl get pods,svc -n database
 kubectl get pods,svc -n backend
 kubectl get pods,svc -n frontend
 kubectl get pods,svc -n ingress-nginx
+kubectl get pods -n logging
 kubectl get ingress -n frontend
 
 # Watch pods/svc/deployments across all 3 app namespaces until they're Running

@@ -23,3 +23,12 @@ metadata:
     app.kubernetes.io/instance: ingress-nginx
     app.kubernetes.io/name: ingress-nginx
   name: ingress-nginx
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/instance: fluent-bit
+    app.kubernetes.io/name: logging
+  name: logging
