@@ -116,6 +116,35 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-app:${{ needs.version.outputs.tag }}
 
+  update-manifests:
+    name: Pin k8s manifests to the new image tag
+    # Only on merges to main: the version job bumped VERSION and pushed
+    # versioned images; now pin the manifests to that same tag so clusters
+    # pick up the new images without the old (unmanaged) :latest tag.
+    if: github.event_name == 'push'
+    needs: [version, api, app]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set image tags in manifests
+        run: |
+          tag="${{ needs.version.outputs.tag }}"
+          sed -i -E "s#(k8s-three-tier-starter-api):[^\"[:space:]]+#\1:${tag}#" k8s/backend/deployment.yaml
+          sed -i -E "s#(k8s-three-tier-starter-app):[^\"[:space:]]+#\1:${tag}#" k8s/frontend/deployment.yaml
+
+      - name: Commit and push manifest updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/backend/deployment.yaml k8s/frontend/deployment.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: pin k8s manifests to ${{ needs.version.outputs.tag }} [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
   db:
     name: DB - build & validate
     needs: version

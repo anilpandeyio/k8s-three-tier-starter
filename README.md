@@ -93,7 +93,7 @@ export DOCKERHUB_USER=anilpandeyio  # optional, defaults to anilpandeyio
 ./scripts/docker/build-and-push.sh --help    # full usage
 ```
 
-The manifests reference `docker.io/<user>/<image>:latest` with `imagePullPolicy: Always`, so kubelet always pulls the latest pushed image. If your repositories are private, create an `imagePullSecret` with your Docker Hub credentials and add it to each `spec.template.spec.imagePullSecrets` in the manifests. After pushing a new image, roll out the change:
+[k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) and [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml) pin an explicit version tag (e.g. `v1.0.4`) matching the repo's [VERSION](VERSION) file, kept in sync automatically: every merge to `main` bumps `VERSION`, pushes `api`/`app` images tagged with the new version, then has CI rewrite both manifests to that tag and commit the change back (see the `version` and `update-manifests` jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml)). If you push images manually via the commands/script above (which publish `:latest`), update the tag in those two manifests yourself before applying, since they won't track an unmanaged `:latest` push. [k8s/database/statefulset.yaml](k8s/database/statefulset.yaml) still references `docker.io/<user>/k8s-three-tier-starter-db:latest` with `imagePullPolicy: Always`, so kubelet always pulls the latest pushed `db` image. If your repositories are private, create an `imagePullSecret` with your Docker Hub credentials and add it to each `spec.template.spec.imagePullSecrets` in the manifests. After pushing a new image, roll out the change:
 
 ```sh
 kubectl rollout restart deployment/quotes-api-deployment -n backend
