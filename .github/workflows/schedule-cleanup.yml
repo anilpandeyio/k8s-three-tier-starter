@@ -16,31 +16,55 @@ jobs:
           - k8s-three-tier-starter-app
           - k8s-three-tier-starter-db
     steps:
-      - name: Delete all but "latest" and the 4 most recently pushed tags
+      - name: Keep the 5 newest version tags
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           REPO: ${{ matrix.repo }}
         run: |
           set -euo pipefail
-          KEEP=4
+          KEEP=5
+          tags_url="https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${REPO}/tags/?page_size=100"
+          all_tags_json='[]'
 
           # Hub API auth is separate from registry login: exchange credentials for a JWT
           hub_token=$(curl -sf -H "Content-Type: application/json" -X POST \
-            -d "{\"username\": \"${DOCKERHUB_USERNAME}\", \"password\": \"${DOCKERHUB_TOKEN}\"}" \
-            https://hub.docker.com/v2/users/login/ | jq -r .token)
+            -d "$(jq -n --arg username "$DOCKERHUB_USERNAME" --arg password "$DOCKERHUB_TOKEN" \
+              '{username: $username, password: $password}')" \
+            https://hub.docker.com/v2/users/login/ | jq -er .token)
 
-          # Newest-first list of every tag currently in the repo
-          all_tags=$(curl -sf -H "Authorization: JWT ${hub_token}" \
-            "https://hub.docker.com/v2/repositories/${DOCKERHUB_USERNAME}/${REPO}/tags/?page_size=100&ordering=-last_updated" \
-            | jq -r '.results[].name')
+          # Fetch every page; sort locally by timestamp so API ordering cannot
+          # cause the newest tags to be mistaken for old ones.
+          while [[ -n "$tags_url" ]]; do
+            page=$(curl -sf -H "Authorization: JWT ${hub_token}" "$tags_url")
+            page_tags=$(jq -c '[.results[] | {name, last_updated}]' <<< "$page")
+            all_tags_json=$(jq -cn \
+              --argjson all "$all_tags_json" \
+              --argjson page "$page_tags" \
+              '$all + $page')
+            tags_url=$(jq -r '.next // empty' <<< "$page")
+          done
 
-          keep=$(printf '%s\n' "latest" $(printf '%s\n' "$all_tags" | grep -vx 'latest' | head -n "$KEEP"))
+          if [[ "$(jq 'length' <<< "$all_tags_json")" -eq 0 ]]; then
+            echo "No tags returned for ${REPO}; refusing to delete anything." >&2
+            exit 1
+          fi
+
+          # Keep only the five newest versioned tags; do not give "latest"
+          # special retention because production images use versioned tags.
+          keep=$(jq -r --argjson count "$KEEP" '
+            [.[] | select(.name != "latest")]
+            | sort_by(.last_updated // "")
+            | reverse
+            | .[:$count]
+            | .[].name
+          ' <<< "$all_tags_json")
+          mapfile -t all_tags < <(jq -r '.[].name' <<< "$all_tags_json")
 
           echo "Keeping:"
           echo "$keep"
 
-          for tag in $all_tags; do
+          for tag in "${all_tags[@]}"; do
             if ! printf '%s\n' "$keep" | grep -qx "$tag"; then
               echo "Deleting ${REPO}:${tag}"
               curl -sf -X DELETE -H "Authorization: JWT ${hub_token}" \

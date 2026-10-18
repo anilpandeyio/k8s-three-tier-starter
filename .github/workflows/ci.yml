@@ -10,6 +10,50 @@ permissions:
   contents: write # lets the release job commit the published version and manifest tags
 
 jobs:
+  changes:
+    name: Detect changed image contexts
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      app: ${{ steps.filter.outputs.app }}
+      db: ${{ steps.filter.outputs.db }}
+      any: ${{ steps.filter.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check which image contexts changed
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            changed_files=$(git ls-files api app db)
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            changed_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          else
+            changed_files=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          fi
+
+          for service in api app db; do
+            if grep -q "^${service}/" <<< "$changed_files"; then
+              echo "${service}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "${service}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+          if grep -Eq '^(api|app|db)/' <<< "$changed_files"; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
   version:
     name: Resolve image tag
     runs-on: ubuntu-latest
@@ -32,35 +76,46 @@ jobs:
 
   api:
     name: API - build, test & validate
-    needs: version
+    needs: [version, changes]
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: api
     steps:
+      - name: Skip unchanged API image
+        if: needs.changes.outputs.api != 'true'
+        run: echo "No changes under api/; skipping API test, build, and push."
+
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.api == 'true'
 
       - uses: actions/setup-node@v4
+        if: needs.changes.outputs.api == 'true'
         with:
           node-version: "24"
           cache: "npm"
           cache-dependency-path: api/package-lock.json
 
       - name: Install dependencies
+        if: needs.changes.outputs.api == 'true'
         run: npm ci
 
       - name: Run tests
+        if: needs.changes.outputs.api == 'true'
         run: npm test
 
       - uses: docker/setup-buildx-action@v3
+        if: needs.changes.outputs.api == 'true'
 
       - name: Log in to Docker Hub
+        if: needs.changes.outputs.api == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push image
+        if: needs.changes.outputs.api == 'true'
         uses: docker/build-push-action@v6
         with:
           context: api
@@ -69,35 +124,46 @@ jobs:
 
   app:
     name: App - build, test & validate
-    needs: version
+    needs: [version, changes]
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: app
     steps:
+      - name: Skip unchanged app image
+        if: needs.changes.outputs.app != 'true'
+        run: echo "No changes under app/; skipping app test, build, and push."
+
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.app == 'true'
 
       - uses: actions/setup-node@v4
+        if: needs.changes.outputs.app == 'true'
         with:
           node-version: "24"
           cache: "npm"
           cache-dependency-path: app/package-lock.json
 
       - name: Install dependencies
+        if: needs.changes.outputs.app == 'true'
         run: npm ci
 
       - name: Run tests
+        if: needs.changes.outputs.app == 'true'
         run: npm test
 
       - uses: docker/setup-buildx-action@v3
+        if: needs.changes.outputs.app == 'true'
 
       - name: Log in to Docker Hub
+        if: needs.changes.outputs.app == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push image
+        if: needs.changes.outputs.app == 'true'
         uses: docker/build-push-action@v6
         with:
           context: app
@@ -106,29 +172,39 @@ jobs:
 
   update-manifests:
     name: Publish version and pin manifests
-    # Commit the version only after every image using it has been published.
-    if: github.event_name == 'push'
-    needs: [version, api, app, db]
+    # Advance the release only after all changed images have been published.
+    if: github.event_name == 'push' && needs.changes.outputs.any == 'true'
+    needs: [changes, version, api, app, db]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
 
-      - name: Set version and image tags
+      - name: Set version and changed image tags
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          API_CHANGED: ${{ needs.changes.outputs.api }}
+          APP_CHANGED: ${{ needs.changes.outputs.app }}
+          DB_CHANGED: ${{ needs.changes.outputs.db }}
         run: |
           tag="${{ needs.version.outputs.tag }}"
           echo "${tag#v}" > VERSION
-          sed -i -E "s#(image: docker.io/)[^/]+/(k8s-three-tier-starter-api):[^\"[:space:]]+#\1${DOCKERHUB_USERNAME}/\2:${tag}#" k8s/backend/deployment.yaml
-          sed -i -E "s#(image: docker.io/)[^/]+/(k8s-three-tier-starter-app):[^\"[:space:]]+#\1${DOCKERHUB_USERNAME}/\2:${tag}#" k8s/frontend/deployment.yaml
+          if [[ "$API_CHANGED" == "true" ]]; then
+            sed -i -E "s#(image: docker.io/)[^/]+/(k8s-three-tier-starter-api):[^\"[:space:]]+#\1${DOCKERHUB_USERNAME}/\2:${tag}#" k8s/backend/deployment.yaml
+          fi
+          if [[ "$APP_CHANGED" == "true" ]]; then
+            sed -i -E "s#(image: docker.io/)[^/]+/(k8s-three-tier-starter-app):[^\"[:space:]]+#\1${DOCKERHUB_USERNAME}/\2:${tag}#" k8s/frontend/deployment.yaml
+          fi
+          if [[ "$DB_CHANGED" == "true" ]]; then
+            sed -i -E "s#(image: docker.io/)[^/]+/(k8s-three-tier-starter-db):[^\"[:space:]]+#\1${DOCKERHUB_USERNAME}/\2:${tag}#" k8s/database/statefulset.yaml
+          fi
 
       - name: Commit and push version and manifest updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION k8s/backend/deployment.yaml k8s/frontend/deployment.yaml
+          git add VERSION k8s/backend/deployment.yaml k8s/frontend/deployment.yaml k8s/database/statefulset.yaml
           if ! git diff --cached --quiet; then
             git commit -m "ci: publish version ${{ needs.version.outputs.tag }} [skip ci]"
             git push origin HEAD:${{ github.ref_name }}
@@ -136,20 +212,28 @@ jobs:
 
   db:
     name: DB - build & validate
-    needs: version
+    needs: [version, changes]
     runs-on: ubuntu-latest
     steps:
+      - name: Skip unchanged database image
+        if: needs.changes.outputs.db != 'true'
+        run: echo "No changes under db/; skipping database image build and push."
+
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.db == 'true'
 
       - uses: docker/setup-buildx-action@v3
+        if: needs.changes.outputs.db == 'true'
 
       - name: Log in to Docker Hub
+        if: needs.changes.outputs.db == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push image
+        if: needs.changes.outputs.db == 'true'
         uses: docker/build-push-action@v6
         with:
           context: db
