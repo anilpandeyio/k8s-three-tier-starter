@@ -7,6 +7,6 @@ CREATE TABLE IF NOT EXISTS `quotes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO quotes(quote, author)
-VALUES("Be the change you want to see in the world.", "Ghandi"), ("Master patterns in life, and  you'll never suffer is the secret","someone");
+VALUES("Be the change you want to see in the world.", "Gandhi"), ("Master patterns in life, and  you'll never suffer is the secret","someone");
 
 
