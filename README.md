@@ -103,19 +103,19 @@ kubectl rollout restart statefulset/mysql -n database
 
 ### Changing the schema of an existing database
 
-Updating [db/init.sql](db/init.sql) only affects a newly initialized database; it does not alter the existing MySQL volume. For a schema change, back up the database, run the migration once against the live database, and only then roll out API code that uses the new column. For example, to add the nullable `source` column:
+Updating [db/init.sql](db/init.sql) only affects a newly initialized database; it does not alter the existing MySQL volume. The API now applies the `source` column migration automatically at startup, before it begins serving requests. A MySQL advisory lock ensures replicas do not attempt the migration concurrently. The database user configured for the API must have permission to alter the `quotes` table. If you need to inspect or apply the migration manually, use:
 
 ```sh
 kubectl exec -it -n database mysql-0 -- mysql -uuser -p quotesdb
 ```
 
-Enter the MySQL password when prompted, then run:
+Enter the MySQL password when prompted, then check:
 
 ```sql
-ALTER TABLE quotes ADD COLUMN source varchar(255) DEFAULT NULL;
+SHOW COLUMNS FROM quotes LIKE 'source';
 ```
 
-The matching migration is in [db/migrations/001-add-source-to-quotes.sql](db/migrations/001-add-source-to-quotes.sql). After the migration and successful CI image publishing, apply the updated API and frontend manifests and wait for their rollouts:
+If the column is missing, apply [db/migrations/001-add-source-to-quotes.sql](db/migrations/001-add-source-to-quotes.sql) once. Normally, deploy the updated API image; it will detect the existing column or add it before becoming ready. After successful CI image publishing, apply the updated API and frontend manifests and wait for their rollouts:
 
 ![MySQL quotes table showing the new source column](db/migrations/quotes-source-column.png)
 
