@@ -117,6 +117,8 @@ ALTER TABLE quotes ADD COLUMN source varchar(255) DEFAULT NULL;
 
 The matching migration is in [db/migrations/001-add-source-to-quotes.sql](db/migrations/001-add-source-to-quotes.sql). After the migration and successful CI image publishing, apply the updated API and frontend manifests and wait for their rollouts:
 
+![MySQL quotes table showing the new source column](db/migrations/quotes-source-column.png)
+
 ```sh
 kubectl apply -f k8s/backend/deployment.yaml -f k8s/frontend/deployment.yaml
 kubectl rollout status deployment/quotes-api-deployment -n backend --timeout=5m
