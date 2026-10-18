@@ -19,13 +19,19 @@ describe("GET /", () => {
 
   it("renders quotes returned by the API", async () => {
     axios.get.mockResolvedValueOnce({
-      data: [{ id: 1, quote: "Be the change.", author: "Ghandi" }],
+      data: [{
+        id: 1,
+        quote: "Be the change.",
+        author: "Ghandi",
+        source: "Book",
+      }],
     });
 
     const res = await request(app).get("/");
 
     expect(res.status).toBe(200);
     expect(res.text).toContain("Be the change.");
+    expect(res.text).toContain("Source: Book");
   });
 
   it("renders an empty list when the API is unreachable", async () => {
@@ -48,10 +54,15 @@ describe("POST /", () => {
 
     const res = await request(app)
       .post("/")
+      .type("form")
       .send({ quote: "New quote", author: "Someone" });
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("/");
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining("/api/quotes"),
+      { quote: "New quote", author: "Someone", source: undefined }
+    );
   });
 
   it("returns 500 when the API call fails", async () => {
@@ -72,13 +83,19 @@ describe("GET /quotes/random", () => {
 
   it("renders the random quote returned by the API", async () => {
     axios.get.mockResolvedValueOnce({
-      data: { id: 2, quote: "Carpe diem.", author: "Horace" },
+      data: {
+        id: 2,
+        quote: "Carpe diem.",
+        author: "Horace",
+        source: "Poem",
+      },
     });
 
     const res = await request(app).get("/quotes/random");
 
     expect(res.status).toBe(200);
     expect(res.text).toContain("Carpe diem.");
+    expect(res.text).toContain("Source: Poem");
   });
 
   it("renders an error message when the API call fails", async () => {

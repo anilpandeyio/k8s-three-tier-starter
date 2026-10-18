@@ -17,6 +17,7 @@
             <form class="quote-form" method="POST">
                 <input type="text" name="quote" placeholder="Enter a quote" required>
                 <input type="text" name="author" placeholder="Author">
+                <input type="text" name="source" placeholder="Source" maxlength="255">
                 <button type="submit">Add Quote</button>
             </form>
         </section>
@@ -30,6 +31,9 @@
                         <li class="quote-item">
                             <p class="quote-text">&ldquo;<%= quote.quote %>&rdquo;</p>
                             <p class="quote-author">&mdash; <%= quote.author || "Unknown" %></p>
+                            <% if (quote.source) { %>
+                                <p class="quote-source">Source: <%= quote.source %></p>
+                            <% } %>
                             <form class="quote-delete-form" method="POST" action="/quotes/<%= quote.id %>/delete">
                                 <button type="submit">Delete</button>
                             </form>
@@ -41,4 +45,3 @@
     </div>
 </body>
 </html>
-

@@ -18,6 +18,9 @@
             <% } else { %>
                 <p class="quote-text">&ldquo;<%= quote.quote %>&rdquo;</p>
                 <p class="quote-author">&mdash; <%= quote.author || "Unknown" %></p>
+                <% if (quote.source) { %>
+                    <p class="quote-source">Source: <%= quote.source %></p>
+                <% } %>
             <% } %>
             <a href="/">Back to all quotes</a>
         </section>

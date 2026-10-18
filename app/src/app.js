@@ -45,11 +45,12 @@ app.get("/", async (req, res) => {
 
 app.post("/", async (req, res) => {
   // Post the quote to the API
-  const { quote, author } = req.body;
+  const { quote, author, source } = req.body;
   try {
     const response = await axios.post(`${API_URL}/api/quotes`, {
       quote,
       author,
+      source,
     });
     if (response.status === 201) {
       return res.redirect("/");

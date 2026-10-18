@@ -12,14 +12,14 @@ describe("Quotes API", () => {
   describe("GET /api/quotes", () => {
     it("returns the list of quotes", async () => {
       pool.query.mockResolvedValueOnce([
-        [{ id: 1, quote: "Be the change.", author: "Ghandi" }],
+        [{ id: 1, quote: "Be the change.", author: "Ghandi", source: "Book" }],
       ]);
 
       const res = await request(app).get("/api/quotes");
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual([
-        { id: 1, quote: "Be the change.", author: "Ghandi" },
+        { id: 1, quote: "Be the change.", author: "Ghandi", source: "Book" },
       ]);
     });
   });
@@ -27,13 +27,18 @@ describe("Quotes API", () => {
   describe("GET /api/quotes/random", () => {
     it("returns a single random quote", async () => {
       pool.query.mockResolvedValueOnce([
-        [{ id: 2, quote: "Carpe diem.", author: "Horace" }],
+        [{ id: 2, quote: "Carpe diem.", author: "Horace", source: "Poem" }],
       ]);
 
       const res = await request(app).get("/api/quotes/random");
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ id: 2, quote: "Carpe diem.", author: "Horace" });
+      expect(res.body).toEqual({
+        id: 2,
+        quote: "Carpe diem.",
+        author: "Horace",
+        source: "Poem",
+      });
     });
 
     it("returns 404 when there are no quotes", async () => {
@@ -48,13 +53,18 @@ describe("Quotes API", () => {
   describe("GET /api/quotes/:id", () => {
     it("returns the matching quote", async () => {
       pool.query.mockResolvedValueOnce([
-        [{ id: 5, quote: "Stay hungry.", author: "Jobs" }],
+        [{ id: 5, quote: "Stay hungry.", author: "Jobs", source: "Speech" }],
       ]);
 
       const res = await request(app).get("/api/quotes/5");
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ id: 5, quote: "Stay hungry.", author: "Jobs" });
+      expect(res.body).toEqual({
+        id: 5,
+        quote: "Stay hungry.",
+        author: "Jobs",
+        source: "Speech",
+      });
     });
 
     it("returns 404 when the quote doesn't exist", async () => {
@@ -72,14 +82,32 @@ describe("Quotes API", () => {
 
       const res = await request(app)
         .post("/api/quotes")
-        .send({ quote: "New quote", author: "Someone" });
+        .send({ quote: "New quote", author: "Someone", source: "Book" });
 
       expect(res.status).toBe(201);
-      expect(res.body).toEqual({ id: 10, quote: "New quote", author: "Someone" });
+      expect(res.body).toEqual({
+        id: 10,
+        quote: "New quote",
+        author: "Someone",
+        source: "Book",
+      });
+      expect(pool.query).toHaveBeenCalledWith(
+        "INSERT INTO quotes (quote, author, source) VALUES (?, ?, ?)",
+        ["New quote", "Someone", "Book"]
+      );
     });
 
     it("returns 400 when quote is missing", async () => {
       const res = await request(app).post("/api/quotes").send({ author: "Someone" });
+
+      expect(res.status).toBe(400);
+      expect(pool.query).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when source is not a string", async () => {
+      const res = await request(app)
+        .post("/api/quotes")
+        .send({ quote: "New quote", source: 123 });
 
       expect(res.status).toBe(400);
       expect(pool.query).not.toHaveBeenCalled();
@@ -92,10 +120,19 @@ describe("Quotes API", () => {
 
       const res = await request(app)
         .put("/api/quotes/1")
-        .send({ quote: "Updated", author: "Someone" });
+        .send({ quote: "Updated", author: "Someone", source: "Book" });
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ id: 1, quote: "Updated", author: "Someone" });
+      expect(res.body).toEqual({
+        id: 1,
+        quote: "Updated",
+        author: "Someone",
+        source: "Book",
+      });
+      expect(pool.query).toHaveBeenCalledWith(
+        "UPDATE quotes SET quote = ?, author = ?, source = ? WHERE id = ?",
+        ["Updated", "Someone", "Book", "1"]
+      );
     });
 
     it("returns 404 when the quote doesn't exist", async () => {
@@ -106,6 +143,20 @@ describe("Quotes API", () => {
         .send({ quote: "Updated", author: "Someone" });
 
       expect(res.status).toBe(404);
+    });
+
+    it("leaves source unchanged when it is omitted", async () => {
+      pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+      const res = await request(app)
+        .put("/api/quotes/1")
+        .send({ quote: "Updated", author: "Someone" });
+
+      expect(res.status).toBe(200);
+      expect(pool.query).toHaveBeenCalledWith(
+        "UPDATE quotes SET quote = ?, author = ? WHERE id = ?",
+        ["Updated", "Someone", "1"]
+      );
     });
   });
 
