@@ -7,37 +7,25 @@ on:
     branches: [main]
 
 permissions:
-  contents: write # lets the "version" job commit the bumped VERSION file back to main
+  contents: write # lets the release job commit the published version and manifest tags
 
 jobs:
   version:
-    name: Resolve image tag / bump version
+    name: Resolve image tag
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Bump VERSION file on merges to main
-        if: github.event_name == 'push'
-        id: bump
-        run: |
-          current=$(cat VERSION)
-          IFS='.' read -r major minor patch <<< "$current"
-          new_version="$major.$minor.$((patch + 1))"
-          echo "$new_version" > VERSION
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "ci: bump version to v$new_version [skip ci]"
-          git push origin HEAD:${{ github.ref_name }}
-          echo "version=$new_version" >> "$GITHUB_OUTPUT"
-
       - name: Resolve tag
         id: resolve
-        # PRs get a traceable commit-sha tag; merges to main get the freshly bumped version
+        # PRs get a traceable commit-sha tag; pushes get the next VERSION tag.
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            echo "tag=v${{ steps.bump.outputs.version }}" >> "$GITHUB_OUTPUT"
+            current=$(cat VERSION)
+            IFS='.' read -r major minor patch <<< "$current"
+            echo "tag=v$major.$minor.$((patch + 1))" >> "$GITHUB_OUTPUT"
           else
             echo "tag=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
           fi
@@ -117,31 +105,32 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-app:${{ needs.version.outputs.tag }}
 
   update-manifests:
-    name: Pin k8s manifests to the new image tag
-    # Only on merges to main: the version job bumped VERSION and pushed
-    # versioned images; now pin the manifests to that same tag so clusters
-    # pick up the new images without the old (unmanaged) :latest tag.
+    name: Publish version and pin manifests
+    # Commit the version only after every image using it has been published.
     if: github.event_name == 'push'
-    needs: [version, api, app]
+    needs: [version, api, app, db]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
 
-      - name: Set image tags in manifests
+      - name: Set version and image tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           tag="${{ needs.version.outputs.tag }}"
-          sed -i -E "s#(k8s-three-tier-starter-api):[^\"[:space:]]+#\1:${tag}#" k8s/backend/deployment.yaml
-          sed -i -E "s#(k8s-three-tier-starter-app):[^\"[:space:]]+#\1:${tag}#" k8s/frontend/deployment.yaml
+          echo "${tag#v}" > VERSION
+          sed -i -E "s#(image: docker.io/)[^/]+/(k8s-three-tier-starter-api):[^\"[:space:]]+#\1${DOCKERHUB_USERNAME}/\2:${tag}#" k8s/backend/deployment.yaml
+          sed -i -E "s#(image: docker.io/)[^/]+/(k8s-three-tier-starter-app):[^\"[:space:]]+#\1${DOCKERHUB_USERNAME}/\2:${tag}#" k8s/frontend/deployment.yaml
 
-      - name: Commit and push manifest updates
+      - name: Commit and push version and manifest updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/backend/deployment.yaml k8s/frontend/deployment.yaml
+          git add VERSION k8s/backend/deployment.yaml k8s/frontend/deployment.yaml
           if ! git diff --cached --quiet; then
-            git commit -m "ci: pin k8s manifests to ${{ needs.version.outputs.tag }} [skip ci]"
+            git commit -m "ci: publish version ${{ needs.version.outputs.tag }} [skip ci]"
             git push origin HEAD:${{ github.ref_name }}
           fi
 
@@ -166,4 +155,3 @@ jobs:
           context: db
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/k8s-three-tier-starter-db:${{ needs.version.outputs.tag }}
-
