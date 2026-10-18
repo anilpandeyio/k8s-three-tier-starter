@@ -32,14 +32,18 @@ app.get("/health", (req, res) => {
 });
 
 app.get("/", async (req, res) => {
+  const sourceFilter =
+    typeof req.query.source === "string" ? req.query.source.trim() : "";
   // GET request to fetch quotes from the API
   try {
-    const response = await axios.get(`${API_URL}/api/quotes`);
-    res.render("index", { quotes: response.data });
+    const response = await axios.get(`${API_URL}/api/quotes`, {
+      params: sourceFilter ? { source: sourceFilter } : {},
+    });
+    res.render("index", { quotes: response.data, sourceFilter });
   } catch (err) {
     // Handle the case where the API is down or returning an error
     logger.error(`Unable to fetch quotes. ${err.message}`);
-    res.render("index", { quotes: [] });
+    res.render("index", { quotes: [], sourceFilter });
   }
 });
 

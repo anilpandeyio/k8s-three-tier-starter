@@ -21,6 +21,31 @@ describe("Quotes API", () => {
       expect(res.body).toEqual([
         { id: 1, quote: "Be the change.", author: "Ghandi", source: "Book" },
       ]);
+      expect(pool.query).toHaveBeenCalledWith("SELECT * FROM quotes");
+    });
+
+    it("filters quotes by source using a parameterized query", async () => {
+      pool.query.mockResolvedValueOnce([
+        [{ id: 2, quote: "Carpe diem.", author: "Horace", source: "Poem" }],
+      ]);
+
+      const res = await request(app).get("/api/quotes?source=%20Poem%20");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([
+        { id: 2, quote: "Carpe diem.", author: "Horace", source: "Poem" },
+      ]);
+      expect(pool.query).toHaveBeenCalledWith(
+        "SELECT * FROM quotes WHERE source = ?",
+        ["Poem"]
+      );
+    });
+
+    it("rejects a source filter that is not a string", async () => {
+      const res = await request(app).get("/api/quotes?source[]=Poem");
+
+      expect(res.status).toBe(400);
+      expect(pool.query).not.toHaveBeenCalled();
     });
   });
 

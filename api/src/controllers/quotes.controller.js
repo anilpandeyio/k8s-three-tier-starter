@@ -1,7 +1,19 @@
 const pool = require("../config/db");
 
 async function getQuotes(req, res) {
-  const [rows] = await pool.query("SELECT * FROM quotes");
+  const requestedSource = req.query.source;
+  if (
+    requestedSource !== undefined &&
+    (typeof requestedSource !== "string" || requestedSource.length > 255)
+  ) {
+    return res
+      .status(400)
+      .json({ error: "source must be a string of at most 255 characters" });
+  }
+  const source = requestedSource?.trim();
+  const [rows] = source
+    ? await pool.query("SELECT * FROM quotes WHERE source = ?", [source])
+    : await pool.query("SELECT * FROM quotes");
   res.json(
     rows.map((q) => ({
       id: q.id,

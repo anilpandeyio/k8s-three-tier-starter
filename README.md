@@ -3,7 +3,7 @@
 A 3-tier Quotes application (MySQL + API + Frontend) that can run locally with Docker Compose or be deployed to Kubernetes.
 
 - **Database (`db`)**: MySQL, seeded with [db/init.sql](db/init.sql).
-- **API (`api`)**: Node.js + Express + `mysql2`, exposes `/api/quotes` (GET/POST) and `/health`. See [api/api.js](api/api.js).
+- **API (`api`)**: Node.js + Express + `mysql2`, exposes `/api/quotes` (GET/POST), `/health`, and supports filtering quotes by source with `GET /api/quotes?source=Book`.
 - **Frontend (`app`)**: Node.js + Express + EJS, renders quotes and posts new ones via the API. See [app/app.js](app/app.js).
 - **Ingress Controller**: nginx ingress, routes external traffic to the frontend.
 

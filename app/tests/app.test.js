@@ -34,6 +34,22 @@ describe("GET /", () => {
     expect(res.text).toContain("Source: Book");
   });
 
+  it("forwards a source filter to the API and keeps it in the input", async () => {
+    axios.get.mockResolvedValueOnce({
+      data: [{ id: 2, quote: "Carpe diem.", author: "Horace", source: "Poem" }],
+    });
+
+    const res = await request(app).get("/?source=%20Poem%20");
+
+    expect(res.status).toBe(200);
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining("/api/quotes"),
+      { params: { source: "Poem" } }
+    );
+    expect(res.text).toContain('value="Poem"');
+    expect(res.text).toContain("Carpe diem.");
+  });
+
   it("renders an empty list when the API is unreachable", async () => {
     axios.get.mockRejectedValueOnce(new Error("connection refused"));
 
