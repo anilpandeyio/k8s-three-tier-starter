@@ -63,6 +63,7 @@ See the [Kubernetes architecture flowchart](architecture-flow.md) for how extern
 | [k8s/logging/loki/configmap.yaml](k8s/logging/loki/configmap.yaml) | Loki config (filesystem/TSDB storage, single-binary mode) — in its own subfolder so `kubectl apply -f k8s/logging` never applies it implicitly; see [§5](#5-centralized-log-collection-fluent-bit--loki) |
 | [k8s/logging/loki/pvc.yaml](k8s/logging/loki/pvc.yaml) | `PersistentVolumeClaim` backing Loki's chunk/index storage |
 | [k8s/logging/loki/deployment.yaml](k8s/logging/loki/deployment.yaml) | Loki `Deployment` (1 replica) + `Service` (`loki.logging.svc.cluster.local:3100`) |
+| [k8s/logging/grafana/grafana.yaml](k8s/logging/grafana/grafana.yaml) | Optional Grafana `Deployment`, `Service`, persistent data PVC, and a preconfigured Loki data source; apply it separately after Loki |
 
 This project pulls images from **Docker Hub** rather than relying on locally built/imported images, so it works the same on any cluster (k3s, Minikube, EKS, etc.).
 
@@ -202,6 +203,42 @@ Add Loki on top, whenever you want it (applies independently of the rest of the 
 kubectl apply -f k8s/logging/loki
 ```
 
+#### Run Grafana and view Loki logs
+
+Grafana is optional and lives in its own subfolder too, so deploying `k8s/logging` or Loki will not deploy it automatically. If you have not deployed the logging stack yet, apply its namespace, Fluent Bit, and Loki first:
+
+```sh
+kubectl apply -f k8s/namespaces.yaml
+kubectl apply -f k8s/logging -f k8s/logging/loki
+```
+
+If Loki is already deployed, skip those commands. Then apply Grafana:
+
+```sh
+kubectl apply -f k8s/logging/grafana
+kubectl rollout status deployment/grafana -n logging --timeout=5m
+```
+
+Forward Grafana's service port (keep this command running) and open the URL in your browser:
+
+```sh
+kubectl port-forward -n logging svc/grafana 3000:3000
+```
+
+Open [http://localhost:3000](http://localhost:3000) and sign in with `admin` / `admin`. Grafana will ask you to choose a new password on first sign-in.
+
+The manifest provisions a Loki data source automatically. In Grafana, open **Explore**, select **Loki**, and run a query such as:
+
+```logql
+{source="app-file", service="quotes-frontend"}
+```
+
+The provisioned data source uses `http://loki.logging.svc.cluster.local:3100`, which is the Loki Service address reachable from Grafana inside the cluster. Loki must be running in the same cluster. Grafana's data is stored in the `grafana-data-pvc` claim, so dashboards and settings survive pod restarts. To remove Grafana and its stored data:
+
+```sh
+kubectl delete -f k8s/logging/grafana
+```
+
 Remove just Loki, leaving Fluent Bit's file-based logging untouched:
 
 ```sh
@@ -249,7 +286,7 @@ kubectl run pvc-inspector -n logging --image=busybox:1.36 --restart=Never --rm -
 ```sh
 ./scripts/k8s/destroy.sh
 # equivalent to:
-kubectl delete -f k8s/logging/loki -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
+kubectl delete -f k8s/logging/grafana -f k8s/logging/loki -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
 ```
 
 ## Notes

@@ -411,7 +411,37 @@ kubectl apply -f k8s/logging -f k8s/logging/loki -f k8s/database -f k8s/backend 
 
 `-f k8s/logging` and `-f k8s/logging/loki` are two separate `-f` flags on purpose — `kubectl apply -f <dir>` only reads the files directly in that directory, not its subfolders, so Loki needs its own explicit `-f`. (Want to remove Loki later without touching anything else? `kubectl delete -f k8s/logging/loki`.)
 
-### 6.4 Either way, access the app
+### 6.4 Add Grafana to visualize Loki logs
+
+If the logging stack has not been deployed yet, first apply its namespace, Fluent Bit, and Loki. If Loki is already running, skip these commands:
+
+```sh
+kubectl apply -f k8s/namespaces.yaml
+kubectl apply -f k8s/logging -f k8s/logging/loki
+```
+
+Apply the optional Grafana manifest and wait for its Deployment:
+
+```sh
+kubectl apply -f k8s/logging/grafana
+kubectl rollout status deployment/grafana -n logging --timeout=5m
+```
+
+In another terminal, forward Grafana's Service port and leave the command running:
+
+```sh
+kubectl port-forward -n logging svc/grafana 3000:3000
+```
+
+Open [http://localhost:3000](http://localhost:3000) and sign in with `admin` / `admin`; Grafana will prompt you to change the password. The manifest automatically provisions a **Loki** data source pointing to `http://loki.logging.svc.cluster.local:3100`, so no manual data-source setup is needed. Go to **Explore**, select **Loki**, and query for example:
+
+```logql
+{source="app-file", service="quotes-frontend"}
+```
+
+Grafana stores its data in a PVC. To remove Grafana and that PVC, run `kubectl delete -f k8s/logging/grafana`.
+
+### 6.5 Either way, access the app
 
 ```sh
 kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8081:80
@@ -518,7 +548,7 @@ Kubernetes already sets a container's `$HOSTNAME` environment variable to the Po
 ## 10. Cleanup
 
 ```sh
-kubectl delete -f k8s/logging/loki -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
+kubectl delete -f k8s/logging/grafana -f k8s/logging/loki -f k8s/logging -f k8s/ingress-nginx -f k8s/frontend -f k8s/backend -f k8s/database -f k8s/namespaces.yaml --ignore-not-found
 # or, equivalently:
 ./scripts/k8s/destroy.sh
 ```
