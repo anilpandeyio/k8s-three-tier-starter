@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: quotes-frontend
-          image: docker.io/anilpandeyio/k8s-three-tier-starter-app:v1.0.10 # kept in sync with VERSION by CI (ci.yml)
+          image: docker.io/anilpandeyio/k8s-three-tier-starter-app:v1.0.12 # kept in sync with VERSION by CI (ci.yml)
           imagePullPolicy: Always
           ports:
             - containerPort: 5002
