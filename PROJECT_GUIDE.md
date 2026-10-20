@@ -297,6 +297,8 @@ This is how a log file written *inside* the API/frontend Pod becomes visible to 
    ```
    The `${SERVICE_NAME}-${POD_NAME}.log` filename (e.g. `quotes-api-quotes-api-deployment-6b65465bb-kglhv.log`) matters: if every replica wrote to the exact same filename, two replicas scheduled on the same node would interleave/corrupt each other's writes. Including `$HOSTNAME` (= the Pod name, injected by Kubernetes into every container automatically) makes each replica's file unique.
 
+   Each request log includes a `trace_id` shared across the frontend/API call and a service-local `request_id`. The frontend propagates these in `X-Trace-Id` and `X-Request-Id` headers; the API records the frontend request ID as `parent_request_id`. Both IDs are returned in response headers. In Grafana Explore, filter app logs for a trace with `{source="app-file"} | json | trace_id="<trace-id>"`.
+
 2. **Kubernetes mounts a `hostPath` volume into the Pod at that same directory**, in both [k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) and [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml):
    ```yaml
    # k8s/backend/deployment.yaml:27-34, 38-42
@@ -433,7 +435,13 @@ In another terminal, forward Grafana's Service port and leave the command runnin
 kubectl port-forward -n logging svc/grafana 3000:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with `admin` / `admin`; Grafana will prompt you to change the password. The manifest automatically provisions a **Loki** data source pointing to `http://loki.logging.svc.cluster.local:3100`, so no manual data-source setup is needed. Go to **Explore**, select **Loki**, and query for example:
+Open [http://localhost:3000](http://localhost:3000) and sign in with `admin` / `admin`; Grafana will prompt you to change the password. The manifest automatically provisions a **Loki** data source. If you add it manually, use this URL:
+
+```text
+http://loki.logging.svc.cluster.local:3100
+```
+
+Go to **Explore**, select **Loki**, and query for example:
 
 ```logql
 {source="app-file", service="quotes-frontend"}

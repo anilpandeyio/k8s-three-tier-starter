@@ -1,7 +1,9 @@
 jest.mock("../src/config/db", () => ({ query: jest.fn() }));
+jest.mock("../src/logger", () => ({ info: jest.fn(), error: jest.fn() }));
 
 const request = require("supertest");
 const pool = require("../src/config/db");
+const logger = require("../src/logger");
 const app = require("../src/app");
 
 describe("Quotes API", () => {
@@ -22,6 +24,43 @@ describe("Quotes API", () => {
         { id: 1, quote: "Be the change.", author: "Ghandi", source: "Book" },
       ]);
       expect(pool.query).toHaveBeenCalledWith("SELECT * FROM quotes");
+    });
+
+    it("logs the propagated trace ID and links to the frontend request", async () => {
+      pool.query.mockResolvedValueOnce([[]]);
+
+      const res = await request(app)
+        .get("/api/quotes")
+        .set("x-trace-id", "trace-from-frontend")
+        .set("x-request-id", "frontend-request-123");
+
+      expect(res.status).toBe(200);
+      expect(res.headers["x-trace-id"]).toBe("trace-from-frontend");
+      expect(res.headers["x-request-id"]).toMatch(/^[\w-]{36}$/);
+      expect(logger.info).toHaveBeenCalledWith(
+        "request",
+        expect.objectContaining({
+          trace_id: "trace-from-frontend",
+          request_id: res.headers["x-request-id"],
+          parent_request_id: "frontend-request-123",
+        })
+      );
+    });
+
+    it("replaces invalid correlation IDs", async () => {
+      pool.query.mockResolvedValueOnce([[]]);
+
+      const res = await request(app)
+        .get("/api/quotes")
+        .set("x-trace-id", "invalid/id")
+        .set("x-request-id", "invalid/id");
+
+      expect(res.headers["x-trace-id"]).not.toBe("invalid/id");
+      expect(res.headers["x-trace-id"]).toMatch(/^[\w-]{36}$/);
+      expect(logger.info).toHaveBeenCalledWith(
+        "request",
+        expect.not.objectContaining({ parent_request_id: "invalid/id" })
+      );
     });
 
     it("filters quotes by source using a parameterized query", async () => {

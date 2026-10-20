@@ -1,7 +1,9 @@
 jest.mock("axios");
+jest.mock("../src/logger", () => ({ info: jest.fn(), error: jest.fn() }));
 
 const request = require("supertest");
 const axios = require("axios");
+const logger = require("../src/logger");
 const app = require("../src/app");
 
 describe("GET /health", () => {
@@ -44,10 +46,46 @@ describe("GET /", () => {
     expect(res.status).toBe(200);
     expect(axios.get).toHaveBeenCalledWith(
       expect.stringContaining("/api/quotes"),
-      { params: { source: "Poem" } }
+      {
+        params: { source: "Poem" },
+        headers: {
+          "X-Trace-Id": expect.any(String),
+          "X-Request-Id": expect.any(String),
+        },
+      }
     );
     expect(res.text).toContain('value="Poem"');
     expect(res.text).toContain("Carpe diem.");
+  });
+
+  it("propagates trace IDs and logs a service request ID", async () => {
+    axios.get.mockResolvedValueOnce({ data: [] });
+
+    const res = await request(app).get("/").set("x-trace-id", "trace-from-client");
+
+    expect(res.headers["x-trace-id"]).toBe("trace-from-client");
+    expect(res.headers["x-request-id"]).toMatch(/^[\w-]{36}$/);
+    const [, config] = axios.get.mock.calls[0];
+    expect(config.headers).toEqual({
+      "X-Trace-Id": "trace-from-client",
+      "X-Request-Id": res.headers["x-request-id"],
+    });
+    expect(logger.info).toHaveBeenCalledWith(
+      "request",
+      expect.objectContaining({
+        trace_id: "trace-from-client",
+        request_id: res.headers["x-request-id"],
+      })
+    );
+  });
+
+  it("replaces an invalid incoming trace ID", async () => {
+    axios.get.mockResolvedValueOnce({ data: [] });
+
+    const res = await request(app).get("/").set("x-trace-id", "invalid/id");
+
+    expect(res.headers["x-trace-id"]).not.toBe("invalid/id");
+    expect(res.headers["x-trace-id"]).toMatch(/^[\w-]{36}$/);
   });
 
   it("renders an empty list when the API is unreachable", async () => {
@@ -77,7 +115,13 @@ describe("POST /", () => {
     expect(res.headers.location).toBe("/");
     expect(axios.post).toHaveBeenCalledWith(
       expect.stringContaining("/api/quotes"),
-      { quote: "New quote", author: "Someone", source: undefined }
+      { quote: "New quote", author: "Someone", source: undefined },
+      {
+        headers: {
+          "X-Trace-Id": res.headers["x-trace-id"],
+          "X-Request-Id": res.headers["x-request-id"],
+        },
+      }
     );
   });
 
@@ -136,7 +180,15 @@ describe("POST /quotes/:id/delete", () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("/");
-    expect(axios.delete).toHaveBeenCalledWith(expect.stringContaining("/api/quotes/1"));
+    expect(axios.delete).toHaveBeenCalledWith(
+      expect.stringContaining("/api/quotes/1"),
+      {
+        headers: {
+          "X-Trace-Id": res.headers["x-trace-id"],
+          "X-Request-Id": res.headers["x-request-id"],
+        },
+      }
+    );
   });
 
   it("returns 500 when the API call fails", async () => {

@@ -1,20 +1,43 @@
 const path = require("path");
+const { randomUUID } = require("crypto");
 const express = require("express");
 const axios = require("axios");
 const logger = require("./logger");
 
+const CORRELATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+function validCorrelationId(value) {
+  return typeof value === "string" && CORRELATION_ID_PATTERN.test(value)
+    ? value
+    : undefined;
+}
+
+function apiRequestConfig(req, config = {}) {
+  return {
+    ...config,
+    headers: {
+      ...config.headers,
+      "X-Trace-Id": req.traceId,
+      "X-Request-Id": req.requestId,
+    },
+  };
+}
+
 const app = express();
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "..", "views"));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, "..", "public")));
 
-// Structured per-request access log, written to stdout and (when mounted)
-// the shared log file that Fluent Bit tails.
 app.use((req, res, next) => {
+  req.traceId = validCorrelationId(req.get("x-trace-id")) || randomUUID();
+  req.requestId = randomUUID();
+  res.set("X-Trace-Id", req.traceId);
+  res.set("X-Request-Id", req.requestId);
+
   const start = Date.now();
   res.on("finish", () => {
     logger.info("request", {
+      trace_id: req.traceId,
+      request_id: req.requestId,
       method: req.method,
       path: req.originalUrl,
       status: res.statusCode,
@@ -23,6 +46,9 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, "..", "public")));
 
 // Get the API URL from the environment variable or default to localhost for development
 const API_URL = process.env.API_URL || "http://localhost:5001";
@@ -36,13 +62,17 @@ app.get("/", async (req, res) => {
     typeof req.query.source === "string" ? req.query.source.trim() : "";
   // GET request to fetch quotes from the API
   try {
-    const response = await axios.get(`${API_URL}/api/quotes`, {
-      params: sourceFilter ? { source: sourceFilter } : {},
-    });
+    const response = await axios.get(
+      `${API_URL}/api/quotes`,
+      apiRequestConfig(req, { params: sourceFilter ? { source: sourceFilter } : {} })
+    );
     res.render("index", { quotes: response.data, sourceFilter });
   } catch (err) {
     // Handle the case where the API is down or returning an error
-    logger.error(`Unable to fetch quotes. ${err.message}`);
+    logger.error(`Unable to fetch quotes. ${err.message}`, {
+      trace_id: req.traceId,
+      request_id: req.requestId,
+    });
     res.render("index", { quotes: [], sourceFilter });
   }
 });
@@ -55,13 +85,16 @@ app.post("/", async (req, res) => {
       quote,
       author,
       source,
-    });
+    }, apiRequestConfig(req));
     if (response.status === 201) {
       return res.redirect("/");
     }
     res.status(500).send("Error: Unable to save quote");
   } catch (err) {
-    logger.error(`Unable to save quote. ${err.message}`);
+    logger.error(`Unable to save quote. ${err.message}`, {
+      trace_id: req.traceId,
+      request_id: req.requestId,
+    });
     res.status(500).send("Error: Unable to save quote");
   }
 });
@@ -69,10 +102,16 @@ app.post("/", async (req, res) => {
 app.get("/quotes/random", async (req, res) => {
   // Fetch a single random quote from the API
   try {
-    const response = await axios.get(`${API_URL}/api/quotes/random`);
+    const response = await axios.get(
+      `${API_URL}/api/quotes/random`,
+      apiRequestConfig(req)
+    );
     res.render("random", { quote: response.data, error: null });
   } catch (err) {
-    logger.error(`Unable to fetch a random quote. ${err.message}`);
+    logger.error(`Unable to fetch a random quote. ${err.message}`, {
+      trace_id: req.traceId,
+      request_id: req.requestId,
+    });
     res.render("random", { quote: null, error: "No quote available right now." });
   }
 });
@@ -81,10 +120,16 @@ app.post("/quotes/:id/delete", async (req, res) => {
   // HTML forms can't send DELETE, so proxy it through a POST route
   const { id } = req.params;
   try {
-    await axios.delete(`${API_URL}/api/quotes/${id}`);
+    await axios.delete(
+      `${API_URL}/api/quotes/${id}`,
+      apiRequestConfig(req)
+    );
     res.redirect("/");
   } catch (err) {
-    logger.error(`Unable to delete quote ${id}. ${err.message}`);
+    logger.error(`Unable to delete quote ${id}. ${err.message}`, {
+      trace_id: req.traceId,
+      request_id: req.requestId,
+    });
     res.status(500).send("Error: Unable to delete quote");
   }
 });

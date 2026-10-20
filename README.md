@@ -191,6 +191,12 @@ No hosts-file edits and no tracking the node IP are needed — the port-forward 
 
 **Writing application logs to a file over a shared volume:** [api/src/logger.js](api/src/logger.js) and [app/src/logger.js](app/src/logger.js) write every request/error as a JSON line to both stdout (unchanged `kubectl logs` behavior) and, when `LOG_DIR` is set, to `$LOG_DIR/$SERVICE_NAME-$HOSTNAME.log`. [k8s/backend/deployment.yaml](k8s/backend/deployment.yaml) and [k8s/frontend/deployment.yaml](k8s/frontend/deployment.yaml) set `LOG_DIR=/var/log/quotes-app` and mount a `hostPath` volume at that same path — which sits under the node's `/var/log`, already mounted read-only into the Fluent Bit DaemonSet, so no extra DaemonSet volume was needed. The `$HOSTNAME` (pod name) suffix keeps replicas on the same node from clobbering each other's file.
 
+Each request log includes a `trace_id` shared between the frontend and API, plus a service-local `request_id`. The frontend propagates these as `X-Trace-Id` and `X-Request-Id`; the API records the frontend request ID as `parent_request_id`. Both IDs are also returned in response headers. In Grafana Explore, filter app logs for a trace with:
+
+```logql
+{source="app-file"} | json | trace_id="<trace-id>"
+```
+
 Deploy logging without Loki (file-only — also what step 2 above does):
 
 ```sh
@@ -233,7 +239,13 @@ The manifest provisions a Loki data source automatically. In Grafana, open **Exp
 {source="app-file", service="quotes-frontend"}
 ```
 
-The provisioned data source uses `http://loki.logging.svc.cluster.local:3100`, which is the Loki Service address reachable from Grafana inside the cluster. Loki must be running in the same cluster. Grafana's data is stored in the `grafana-data-pvc` claim, so dashboards and settings survive pod restarts. To remove Grafana and its stored data:
+If you add the data source manually in Grafana, set its URL to:
+
+```text
+http://loki.logging.svc.cluster.local:3100
+```
+
+This is the Loki Service address reachable from Grafana inside the cluster; Loki must be running in the same cluster. Grafana's data is stored in the `grafana-data-pvc` claim, so dashboards and settings survive pod restarts. To remove Grafana and its stored data:
 
 ```sh
 kubectl delete -f k8s/logging/grafana
