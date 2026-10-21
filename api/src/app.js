@@ -39,5 +39,15 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use("/api", quotesRoutes);
 app.use("/", healthRoutes);
+app.use((err, req, res, next) => {
+  logger.error(`Request failed. ${err.message}`, {
+    trace_id: req.traceId,
+    request_id: req.requestId,
+  });
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ error: "Internal server error" });
+});
 
 module.exports = app;

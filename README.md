@@ -3,8 +3,8 @@
 A 3-tier Quotes application (MySQL + API + Frontend) that can run locally with Docker Compose or be deployed to Kubernetes.
 
 - **Database (`db`)**: MySQL, seeded with [db/init.sql](db/init.sql).
-- **API (`api`)**: Node.js + Express + `mysql2`, exposes `/api/quotes` (GET/POST), `/health`, and supports filtering quotes by source with `GET /api/quotes?source=Book`.
-- **Frontend (`app`)**: Node.js + Express + EJS, renders quotes and posts new ones via the API. See [app/app.js](app/app.js).
+- **API (`api`)**: Node.js + Express + `mysql2`, exposes `/api/quotes` (GET/POST), `/health`, and supports filtering quotes by source or tag (for example, `GET /api/quotes?tag=wisdom`).
+- **Frontend (`app`)**: Node.js + Express + EJS, renders quotes and posts new ones via the API, including comma-separated tags.
 - **Ingress Controller**: nginx ingress, routes external traffic to the frontend.
 
 > Previously the `api` and `app` services were written in Python/Flask. They have been rewritten in Node.js/Express.
@@ -104,7 +104,7 @@ kubectl rollout restart statefulset/mysql -n database
 
 ### Changing the schema of an existing database
 
-Updating [db/init.sql](db/init.sql) only affects a newly initialized database; it does not alter the existing MySQL volume. The API now applies the `source` column migration automatically at startup, before it begins serving requests. A MySQL advisory lock ensures replicas do not attempt the migration concurrently. The database user configured for the API must have permission to alter the `quotes` table. If you need to inspect or apply the migration manually, use:
+Updating [db/init.sql](db/init.sql) only affects a newly initialized database; it does not alter the existing MySQL volume. The API applies the `source` column and `quote_tags` table migrations automatically at startup, before it begins serving requests. A MySQL advisory lock ensures replicas do not attempt each migration concurrently. The database user configured for the API must have permission to alter `quotes` and create `quote_tags`. If you need to inspect the schema manually, connect with:
 
 ```sh
 kubectl exec -it -n database mysql-0 -- mysql -uuser -p quotesdb
@@ -114,9 +114,11 @@ Enter the MySQL password when prompted, then check:
 
 ```sql
 SHOW COLUMNS FROM quotes LIKE 'source';
+SHOW TABLES LIKE 'quote_tags';
+SELECT quote_id, tag FROM quote_tags;
 ```
 
-If the column is missing, apply [db/migrations/001-add-source-to-quotes.sql](db/migrations/001-add-source-to-quotes.sql) once. Normally, deploy the updated API image; it will detect the existing column or add it before becoming ready. After successful CI image publishing, apply the updated API and frontend manifests and wait for their rollouts:
+If the source column is missing, apply [db/migrations/001-add-source-to-quotes.sql](db/migrations/001-add-source-to-quotes.sql) once. Normally, deploy the updated API image; it will detect the existing schema or create the missing objects before becoming ready. Quotes can be tagged when created through the frontend; the API accepts a `tags` array, returns tags on quote responses, and supports `GET /api/quotes?tag=wisdom`. After successful CI image publishing, apply the updated API and frontend manifests and wait for their rollouts:
 
 ![MySQL quotes table showing the new source column](db/migrations/quotes-source-column.png)
 

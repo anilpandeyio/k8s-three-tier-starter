@@ -18,6 +18,7 @@
                 <input type="text" name="quote" placeholder="Enter a quote" required>
                 <input type="text" name="author" placeholder="Author">
                 <input type="text" name="source" placeholder="Source" maxlength="255">
+                <input type="text" name="tags" placeholder="Tags (comma-separated, e.g. wisdom, life)">
                 <button type="submit">Add Quote</button>
             </form>
         </section>
@@ -25,8 +26,9 @@
         <section class="card">
             <form class="quote-form" method="GET" action="/">
                 <input type="text" name="source" placeholder="Filter by source" value="<%= sourceFilter %>" maxlength="255">
+                <input type="text" name="tag" placeholder="Filter by tag" value="<%= tagFilter %>" maxlength="100">
                 <button type="submit">Filter</button>
-                <% if (sourceFilter) { %>
+                <% if (sourceFilter || tagFilter) { %>
                     <a href="/">Clear filter</a>
                 <% } %>
             </form>
@@ -34,8 +36,8 @@
 
         <section class="card">
             <% if (quotes.length === 0) { %>
-                <% if (sourceFilter) { %>
-                    <p class="empty-state">No quotes found for this source.</p>
+                <% if (sourceFilter || tagFilter) { %>
+                    <p class="empty-state">No quotes found for the selected filters.</p>
                 <% } else { %>
                     <p class="empty-state">No quotes yet — be the first to add one!</p>
                 <% } %>
@@ -47,6 +49,9 @@
                             <p class="quote-author">&mdash; <%= quote.author || "Unknown" %></p>
                             <% if (quote.source) { %>
                                 <p class="quote-source">Source: <%= quote.source %></p>
+                            <% } %>
+                            <% if (quote.tags && quote.tags.length > 0) { %>
+                                <p class="quote-tags">Tags: <%= quote.tags.join(", ") %></p>
                             <% } %>
                             <form class="quote-delete-form" method="POST" action="/quotes/<%= quote.id %>/delete">
                                 <button type="submit">Delete</button>

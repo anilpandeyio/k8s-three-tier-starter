@@ -60,31 +60,41 @@ app.get("/health", (req, res) => {
 app.get("/", async (req, res) => {
   const sourceFilter =
     typeof req.query.source === "string" ? req.query.source.trim() : "";
+  const tagFilter = typeof req.query.tag === "string" ? req.query.tag.trim() : "";
   // GET request to fetch quotes from the API
   try {
     const response = await axios.get(
       `${API_URL}/api/quotes`,
-      apiRequestConfig(req, { params: sourceFilter ? { source: sourceFilter } : {} })
+      apiRequestConfig(req, {
+        params: {
+          ...(sourceFilter ? { source: sourceFilter } : {}),
+          ...(tagFilter ? { tag: tagFilter } : {}),
+        },
+      })
     );
-    res.render("index", { quotes: response.data, sourceFilter });
+    res.render("index", { quotes: response.data, sourceFilter, tagFilter });
   } catch (err) {
     // Handle the case where the API is down or returning an error
     logger.error(`Unable to fetch quotes. ${err.message}`, {
       trace_id: req.traceId,
       request_id: req.requestId,
     });
-    res.render("index", { quotes: [], sourceFilter });
+    res.render("index", { quotes: [], sourceFilter, tagFilter });
   }
 });
 
 app.post("/", async (req, res) => {
   // Post the quote to the API
   const { quote, author, source } = req.body;
+  const tags = typeof req.body.tags === "string"
+    ? [...new Set(req.body.tags.split(",").map((tag) => tag.trim()).filter(Boolean))]
+    : [];
   try {
     const response = await axios.post(`${API_URL}/api/quotes`, {
       quote,
       author,
       source,
+      tags,
     }, apiRequestConfig(req));
     if (response.status === 201) {
       return res.redirect("/");

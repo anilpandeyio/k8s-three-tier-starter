@@ -21,6 +21,9 @@
                 <% if (quote.source) { %>
                     <p class="quote-source">Source: <%= quote.source %></p>
                 <% } %>
+                <% if (quote.tags && quote.tags.length > 0) { %>
+                    <p class="quote-tags">Tags: <%= quote.tags.join(", ") %></p>
+                <% } %>
             <% } %>
             <a href="/">Back to all quotes</a>
         </section>

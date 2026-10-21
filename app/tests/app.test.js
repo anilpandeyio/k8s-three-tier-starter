@@ -26,6 +26,7 @@ describe("GET /", () => {
         quote: "Be the change.",
         author: "Ghandi",
         source: "Book",
+        tags: ["wisdom", "life"],
       }],
     });
 
@@ -34,6 +35,7 @@ describe("GET /", () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain("Be the change.");
     expect(res.text).toContain("Source: Book");
+    expect(res.text).toContain("Tags: wisdom, life");
   });
 
   it("forwards a source filter to the API and keeps it in the input", async () => {
@@ -56,6 +58,28 @@ describe("GET /", () => {
     );
     expect(res.text).toContain('value="Poem"');
     expect(res.text).toContain("Carpe diem.");
+  });
+
+  it("forwards a tag filter to the API and displays quote tags", async () => {
+    axios.get.mockResolvedValueOnce({
+      data: [{
+        id: 3,
+        quote: "Keep going.",
+        author: "Unknown",
+        source: null,
+        tags: ["motivation"],
+      }],
+    });
+
+    const res = await request(app).get("/?tag=%20motivation%20");
+
+    expect(res.status).toBe(200);
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining("/api/quotes"),
+      expect.objectContaining({ params: { tag: "motivation" } })
+    );
+    expect(res.text).toContain('value="motivation"');
+    expect(res.text).toContain("Tags: motivation");
   });
 
   it("propagates trace IDs and logs a service request ID", async () => {
@@ -115,7 +139,7 @@ describe("POST /", () => {
     expect(res.headers.location).toBe("/");
     expect(axios.post).toHaveBeenCalledWith(
       expect.stringContaining("/api/quotes"),
-      { quote: "New quote", author: "Someone", source: undefined },
+      { quote: "New quote", author: "Someone", source: undefined, tags: [] },
       {
         headers: {
           "X-Trace-Id": res.headers["x-trace-id"],
@@ -123,6 +147,23 @@ describe("POST /", () => {
         },
       }
     );
+  });
+
+  it("splits, trims, and de-duplicates the tags field", async () => {
+    axios.post.mockResolvedValueOnce({ status: 201 });
+
+    const res = await request(app)
+      .post("/")
+      .type("form")
+      .send({ quote: "New quote", tags: " wisdom, life, wisdom ,, " });
+
+    expect(res.status).toBe(302);
+    expect(axios.post.mock.calls[0][1]).toEqual({
+      quote: "New quote",
+      author: undefined,
+      source: undefined,
+      tags: ["wisdom", "life"],
+    });
   });
 
   it("returns 500 when the API call fails", async () => {
@@ -148,6 +189,7 @@ describe("GET /quotes/random", () => {
         quote: "Carpe diem.",
         author: "Horace",
         source: "Poem",
+        tags: ["wisdom"],
       },
     });
 
@@ -156,6 +198,7 @@ describe("GET /quotes/random", () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain("Carpe diem.");
     expect(res.text).toContain("Source: Poem");
+    expect(res.text).toContain("Tags: wisdom");
   });
 
   it("renders an error message when the API call fails", async () => {
