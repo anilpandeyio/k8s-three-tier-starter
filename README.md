@@ -164,6 +164,16 @@ kubectl logs -n backend -l app=quotes-api --tail=100 -f
 
 [k8s/frontend/ingress.yaml](k8s/frontend/ingress.yaml) has no `host` restriction (matches any Host header), so the simplest and most stable way in — especially on WSL, where the node IP can change — is `kubectl port-forward` straight to `localhost`:
 
+To wait for the database, API, frontend, and ingress controller to become ready before starting the port-forward, run [scripts/k8s/port-forward.sh](scripts/k8s/port-forward.sh) from any directory. The script stays running while the tunnel is active; press Ctrl+C to stop it.
+
+To deploy and then start the tunnel in sequence from the repository root, run:
+
+```sh
+./scripts/k8s/run.sh && ./scripts/k8s/port-forward.sh
+```
+
+The port-forward starts after deployment completes and stays in the foreground until you press Ctrl+C.
+
 ```sh
 # pick any free local port; 8080 may already be in use on your machine
 kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8081:80
