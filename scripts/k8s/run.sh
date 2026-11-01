@@ -2,6 +2,12 @@
 ## Deploy everything to Kubernetes using the images already published on Docker Hub
 # No build/push here -- manifests pull docker.io/anilpandeyio/k8s-three-tier-starter-*:latest directly.
 
+# Minikube is configured on my system to expose kubectl as an alias. Aliases
+# are not available in scripts, so this wrapper routes commands through Minikube.
+kubectl() {
+    minikube kubectl -- "$@"
+}
+
 # Namespaces must be applied first since every other manifest targets them
 kubectl apply -f k8s/namespaces.yaml
 
